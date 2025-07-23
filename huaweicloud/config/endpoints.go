@@ -261,11 +261,6 @@ var allServiceCatalog = map[string]ServiceCatalog{
 		Version: "v1",
 		Product: "BMS",
 	},
-	"aos": {
-		Name:    "aos",
-		Version: "v1",
-		Product: "AOS",
-	},
 	"rfs": {
 		Name:    "rfs",
 		Version: "v1",
@@ -481,6 +476,11 @@ var allServiceCatalog = map[string]ServiceCatalog{
 		Version: "v3.1",
 		Product: "DDS",
 	},
+	"deh": {
+		Name:    "deh",
+		Version: "v1.0",
+		Product: "DEH",
+	},
 	"geminidb": {
 		Name:    "gaussdb-nosql",
 		Version: "v3",
@@ -550,8 +550,15 @@ var allServiceCatalog = map[string]ServiceCatalog{
 		Version: "v2",
 		Product: "SMN",
 	},
+	"sms-intl": {
+		Name:             "sms.ap-southeast-3",
+		Version:          "v3",
+		Scope:            "global",
+		WithOutProjectID: true,
+		Product:          "SMS",
+	},
 	"sms": {
-		Name:             "sms.ap-southeast-1",
+		Name:             "sms.cn-north-4",
 		Version:          "v3",
 		Scope:            "global",
 		WithOutProjectID: true,
@@ -738,6 +745,12 @@ var allServiceCatalog = map[string]ServiceCatalog{
 
 		Name:    "css",
 		Version: "v1.0",
+		Product: "CSS",
+	},
+	"cssv2": {
+
+		Name:    "css",
+		Version: "v2.0",
 		Product: "CSS",
 	},
 	"cs": {
@@ -935,6 +948,18 @@ var allServiceCatalog = map[string]ServiceCatalog{
 		Version: "v3",
 		Scope:   "global",
 		Product: "CodeArtsInspector",
+	},
+
+	"codearts_pipeline": {
+		Name:    "cloudpipeline-ext",
+		Version: "v5",
+		Product: "CodeArtsPipeline",
+	},
+
+	"codearts_build": {
+		Name:    "cloudbuild-ext",
+		Version: "v1",
+		Product: "CodeArtsBuild",
 	},
 
 	// catalog for Data Security Center

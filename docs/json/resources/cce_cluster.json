@@ -131,6 +131,12 @@
                 "type": "string",
                 "optional": true
               },
+              "enable_distribute_management": {
+                "type": "bool",
+                "optional": true,
+                "computed": true,
+                "forcenew": true
+              },
               "eni_subnet_cidr": {
                 "type": "string",
                 "computed": true
@@ -224,9 +230,7 @@
               },
               "support_istio": {
                 "type": "bool",
-                "optional": true,
-                "computed": true,
-                "forcenew": true
+                "computed": true
               },
               "tags": {
                 "type": [
@@ -234,6 +238,12 @@
                   "string"
                 ],
                 "optional": true
+              },
+              "timezone": {
+                "type": "string",
+                "optional": true,
+                "computed": true,
+                "forcenew": true
               },
               "vpc_id": {
                 "type": "string",
@@ -256,6 +266,27 @@
                   }
                 },
                 "nesting_mode": "list"
+              },
+              "encryption_config": {
+                "block": {
+                  "attributes": {
+                    "kms_key_id": {
+                      "type": "string",
+                      "optional": true,
+                      "computed": true,
+                      "forcenew": true
+                    },
+                    "mode": {
+                      "type": "string",
+                      "optional": true,
+                      "computed": true,
+                      "forcenew": true
+                    }
+                  }
+                },
+                "nesting_mode": "list",
+                "forcenew": true,
+                "max_items": 1
               },
               "extend_params": {
                 "block": {

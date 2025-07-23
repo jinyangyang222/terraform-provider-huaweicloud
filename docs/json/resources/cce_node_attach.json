@@ -29,8 +29,10 @@
                         "map",
                         "string"
                       ],
+                      "iops": "number",
                       "kms_key_id": "string",
                       "size": "number",
+                      "throughput": "number",
                       "volumetype": "string"
                     }
                   ]
@@ -47,6 +49,18 @@
               },
               "enterprise_project_id": {
                 "type": "string",
+                "computed": true
+              },
+              "extension_nics": {
+                "type": [
+                  "list",
+                  [
+                    "object",
+                    {
+                      "subnet_id": "string"
+                    }
+                  ]
+                ],
                 "computed": true
               },
               "flavor_id": {
@@ -134,8 +148,10 @@
                         "map",
                         "string"
                       ],
+                      "iops": "number",
                       "kms_key_id": "string",
                       "size": "number",
+                      "throughput": "number",
                       "volumetype": "string"
                     }
                   ]

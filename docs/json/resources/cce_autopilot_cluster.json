@@ -68,6 +68,10 @@
                 "type": "string",
                 "optional": true
               },
+              "eip_id": {
+                "type": "string",
+                "optional": true
+              },
               "enable_autopilot": {
                 "type": "bool",
                 "optional": true,
@@ -75,13 +79,11 @@
               },
               "enable_snat": {
                 "type": "bool",
-                "optional": true,
-                "computed": true
+                "optional": true
               },
               "enable_swr_image_access": {
                 "type": "bool",
-                "optional": true,
-                "computed": true
+                "optional": true
               },
               "flavor": {
                 "type": "string",

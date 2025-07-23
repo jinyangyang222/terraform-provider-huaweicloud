@@ -114,7 +114,8 @@ The following arguments are supported:
 * `instance_id` - (Required, String, ForceNew) Specifies an ID of the APIG dedicated instance to which the API belongs
   to. Changing this will create a new API resource.
 
-* `group_id` - (Required, String) Specifies an ID of the APIG group to which the API belongs to.
+* `group_id` - (Required, String, ForceNew) Specifies the ID of the APIG group to which the API belongs.  
+  Changing this will create a new API resource.
 
 * `type` - (Required, String) Specifies the API type.  
   The valid values are **Public** and **Private**.
@@ -152,6 +153,22 @@ The following arguments are supported:
 -> The custom authorization is not supported if the `request_protocol` is **GRPCS**.
 
 * `tags` - (Optional, List) Specifies the list of tags configuration.
+
+* `content_type` - (Optional, String) Specifies the content type of the request body.  
+  The valid values are as follows:
+  + **application/json**
+  + **application/xml**
+  + **multipart/form-data**
+  + **text/plain**
+
+* `is_send_fg_body_base64` - (Optional, Bool) Specifies whether to perform base64 encoding on the body for interaction
+  with FunctionGraph.  
+  Defaults to **true**.  
+  The body does not need to be encoded using base64 only when `content_type` is set to **application/json**.  
+  These scenarios which can be applied:
+  + Custom authentication.
+  + Bound circuit breaker plug-in with FunctionGraph backend downgrade policy.
+  + APIs with FunctionGraph backend.
 
 * `request_params` - (Optional, List) Specifies the configurations of the front-end parameters.  
   The [object](#apig_api_request_params) structure is documented below.
@@ -244,6 +261,14 @@ The `request_params` block supports:
 * `valid_enable` - (Optional, Int) Specifies whether to enable the parameter validation.
   + **1**: enable
   + **2**: disable (by default)
+
+* `orchestrations` - (Optional, List) Specifies the list of orchestration rule IDs which parameter used.  
+  The order of the IDs determines the priority of the rules, and the priority decreases according to the order of the
+  list elements.
+
+  -> 1. The **none_value** rule has the highest priority, a maximum of one **none_value** rule can be bound.<br>2. The
+     **default** rule has the lowest priority, a maximum of one **default** rule can be bound.<br>3. Only one parameter
+     of each API can be bound with unique orchestration rules.
 
 <a name="apig_api_backend_params"></a>
 The `backend_params` block supports:
@@ -525,6 +550,14 @@ The `conditions` block supports:
 * `type` - (Optional, String) Specifies the condition type of the backend policy.  
   The valid values are **Equal**, **Enumerated** and **Matching**, defaults to **Equal**.  
   When the `sys_name` is **req_method**, the valid values are **Equal** and **Enumerated**.
+
+* `mapped_param_name` - (Optional, String) Specifies the name of a parameter generated after orchestration.
+  This parameter is required if the policy type is **orchestration**.  
+  The generated parameter name must exist in the orchestration rule bound to the API.
+
+* `mapped_param_location` - (Optional, String) Specifies the location of a parameter generated after orchestration.
+  This parameter is required if the policy type is **orchestration**.  
+  The generated parameter location must exist in the orchestration rule bound to the API.
 
 ## Attribute Reference
 

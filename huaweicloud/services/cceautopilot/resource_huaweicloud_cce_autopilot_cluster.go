@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 
 	"github.com/chnsz/golangsdk"
 
@@ -22,12 +23,11 @@ var autopilotClusterNonUpdatableParams = []string{
 	"name", "flavor",
 	"host_network", "host_network.*.vpc", "host_network.*.subnet",
 	"container_network", "container_network.*.mode",
-	"alias", "annotations", "category", "type", "version", "description", "custom_san", "enable_snat",
+	"annotations", "category", "type", "version", "custom_san", "enable_snat",
 	"enable_swr_image_access", "enable_autopilot", "ipv6_enable",
-	"eni_network", "eni_network.*.subnets", "eni_network.*.subnets.*.subnet_id",
 	"service_network", "service_network.*.ipv4_cidr",
 	"authentication", "authentication.*.mode",
-	"tags", "kube_proxy_mode",
+	"kube_proxy_mode",
 	"extend_param", "extend_param.*.enterprise_project_id",
 	"configurations_override", "configurations_override.*.name", "configurations_override.*.configurations",
 	"configurations_override.*.configurations.*.name", "configurations_override.*.configurations.*.value",
@@ -37,7 +37,11 @@ var autopilotClusterNonUpdatableParams = []string{
 // @API CCE POST /autopilot/v3/projects/{project_id}/clusters
 // @API CCE GET /autopilot/v3/projects/{project_id}/jobs/{job_id}
 // @API CCE GET /autopilot/v3/projects/{project_id}/clusters/{cluster_id}
+// @API CCE PUT /autopilot/v3/projects/{project_id}/clusters/{cluster_id}
+// @API CCE PUT /autopilot/v3/projects/{project_id}/clusters/{cluster_id}/mastereip
 // @API CCE DELETE /autopilot/v3/projects/{project_id}/clusters/{cluster_id}
+// @API CCE POST /autopilot/v3/projects/{project_id}/clusters/{cluster_id}/tags/create
+// @API CCE POST /autopilot/v3/projects/{project_id}/clusters/{cluster_id}/tags/delete
 func ResourceAutopilotCluster() *schema.Resource {
 	return &schema.Resource{
 		CreateContext: resourceAutopilotClusterCreate,
@@ -100,6 +104,10 @@ func ResourceAutopilotCluster() *schema.Resource {
 					},
 				},
 			},
+			"eip_id": {
+				Type:     schema.TypeString,
+				Optional: true,
+			},
 			"alias": {
 				Type:     schema.TypeString,
 				Optional: true,
@@ -140,12 +148,10 @@ func ResourceAutopilotCluster() *schema.Resource {
 			"enable_snat": {
 				Type:     schema.TypeBool,
 				Optional: true,
-				Computed: true,
 			},
 			"enable_swr_image_access": {
 				Type:     schema.TypeBool,
 				Optional: true,
-				Computed: true,
 			},
 			"enable_autopilot": {
 				Type:     schema.TypeBool,
@@ -292,6 +298,12 @@ func ResourceAutopilotCluster() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
+			"enable_force_new": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validation.StringInSlice([]string{"true", "false"}, false),
+				Description:  utils.SchemaDesc("", utils.SchemaDescInput{Internal: true}),
+			},
 			"platform_version": {
 				Type:     schema.TypeString,
 				Computed: true,
@@ -366,6 +378,7 @@ func buildSpecBodyParams(d *schema.ResourceData) map[string]interface{} {
 		"category":               utils.ValueIgnoreEmpty(d.Get("category")),
 		"type":                   utils.ValueIgnoreEmpty(d.Get("type")),
 		"flavor":                 d.Get("flavor"),
+		"version":                utils.ValueIgnoreEmpty(d.Get("version")),
 		"description":            utils.ValueIgnoreEmpty(d.Get("description")),
 		"customSan":              utils.ValueIgnoreEmpty(d.Get("custom_san")),
 		"enableSnat":             d.Get("enable_snat"),
@@ -558,6 +571,13 @@ func resourceAutopilotClusterCreate(ctx context.Context, d *schema.ResourceData,
 		return diag.Errorf("error waiting for creating CCE autopilot cluster (%s) to complete: %s", id, err)
 	}
 
+	if v, ok := d.GetOk("eip_id"); ok {
+		err = clusterEipAction(createClusterClient, id, v.(string))
+		if err != nil {
+			return diag.Errorf("error binding EIP to CCE autopilot cluster (%s): %s", id, err)
+		}
+	}
+
 	return resourceAutopilotClusterRead(ctx, d, meta)
 }
 
@@ -592,6 +612,7 @@ func resourceAutopilotClusterRead(_ context.Context, d *schema.ResourceData, met
 		return diag.FromErr(err)
 	}
 
+	// enable_snat and enable_swr_image_access not saved, because thay are not returned
 	mErr := multierror.Append(nil,
 		d.Set("region", cfg.GetRegion(d)),
 		d.Set("name", utils.PathSearch("metadata.name", getClusterRespBody, nil)),
@@ -603,8 +624,6 @@ func resourceAutopilotClusterRead(_ context.Context, d *schema.ResourceData, met
 		d.Set("version", utils.PathSearch("spec.version", getClusterRespBody, nil)),
 		d.Set("description", utils.PathSearch("spec.description", getClusterRespBody, nil)),
 		d.Set("custom_san", utils.PathSearch("spec.customSan", getClusterRespBody, nil)),
-		d.Set("enable_snat", utils.PathSearch("spec.enableSnat", getClusterRespBody, nil)),
-		d.Set("enable_swr_image_access", utils.PathSearch("spec.enableSWRImageAccess", getClusterRespBody, nil)),
 		d.Set("enable_autopilot", utils.PathSearch("spec.enableAutopilot", getClusterRespBody, nil)),
 		d.Set("ipv6_enable", utils.PathSearch("spec.ipv6enable", getClusterRespBody, nil)),
 		d.Set("host_network", flattenHostNetwork(getClusterRespBody)),
@@ -785,8 +804,198 @@ func flattenStatus(getClusterRespBody interface{}) []map[string]interface{} {
 	return res
 }
 
-func resourceAutopilotClusterUpdate(_ context.Context, _ *schema.ResourceData, _ interface{}) diag.Diagnostics {
+func buildUpdateClusterBodyParams(d *schema.ResourceData) map[string]interface{} {
+	bodyParams := map[string]interface{}{}
+
+	if d.HasChange("alias") {
+		bodyParams["metadata"] = buildUpdateMetadataBodyParams(d)
+	}
+
+	if d.HasChanges("description", "custom_san", "eni_network") {
+		bodyParams["spec"] = buildUpdateSpecBodyParams(d)
+	}
+
+	return bodyParams
+}
+
+func buildUpdateMetadataBodyParams(d *schema.ResourceData) map[string]interface{} {
+	bodyParams := map[string]interface{}{
+		"alias": utils.ValueIgnoreEmpty(d.Get("alias")),
+	}
+
+	return bodyParams
+}
+
+func buildUpdateSpecBodyParams(d *schema.ResourceData) map[string]interface{} {
+	bodyParams := map[string]interface{}{}
+
+	if d.HasChange("description") {
+		bodyParams["description"] = d.Get("description")
+	}
+
+	if d.HasChange("custom_san") {
+		bodyParams["customSan"] = d.Get("custom_san")
+	}
+
+	if d.HasChange("eni_network") {
+		bodyParams["eniNetwork"] = buildEniNetworkBodyParams(d)
+	}
+
+	return bodyParams
+}
+
+func buildUpdateClusterEipBodyParams(eipID string) map[string]interface{} {
+	if eipID != "" {
+		return map[string]interface{}{
+			"spec": map[string]interface{}{
+				"action": "bind",
+				"spec": map[string]interface{}{
+					"id": eipID,
+				},
+			},
+		}
+	}
+
+	return map[string]interface{}{
+		"spec": map[string]interface{}{
+			"action": "unbind",
+		},
+	}
+}
+
+func clusterEipAction(updateClusterClient *golangsdk.ServiceClient, clusterID, eipID string) error {
+	var updateClusterEipHttpUrl = "autopilot/v3/projects/{project_id}/clusters/{cluster_id}/mastereip"
+
+	updateClusterEipPath := updateClusterClient.Endpoint + updateClusterEipHttpUrl
+	updateClusterEipPath = strings.ReplaceAll(updateClusterEipPath, "{project_id}", updateClusterClient.ProjectID)
+	updateClusterEipPath = strings.ReplaceAll(updateClusterEipPath, "{cluster_id}", clusterID)
+
+	updateOpts := buildUpdateClusterEipBodyParams(eipID)
+	updateClusterOpt := golangsdk.RequestOpts{
+		KeepResponseBody: true,
+		JSONBody:         utils.RemoveNil(updateOpts),
+	}
+
+	_, err := updateClusterClient.Request("PUT", updateClusterEipPath, &updateClusterOpt)
+	if err != nil {
+		return err
+	}
 	return nil
+}
+
+func buildUpdateClusterTagsBodyParams(action string, tags map[string]interface{}) map[string]interface{} {
+	taglist := make([]map[string]interface{}, 0, len(tags))
+	if action == "create" {
+		for k, v := range tags {
+			tag := map[string]interface{}{
+				"key":   k,
+				"value": v,
+			}
+			taglist = append(taglist, tag)
+		}
+	} else {
+		for k := range tags {
+			tag := map[string]interface{}{
+				"key": k,
+			}
+			taglist = append(taglist, tag)
+		}
+	}
+
+	return map[string]interface{}{
+		"tags": taglist,
+	}
+}
+
+func clusterTagsAction(updateClusterClient *golangsdk.ServiceClient, clusterID, action string, tags map[string]interface{}) error {
+	var updateClusterTagsHttpUrl = "autopilot/v3/projects/{project_id}/clusters/{cluster_id}/tags/{action}"
+
+	updateClusterTagsPath := updateClusterClient.Endpoint + updateClusterTagsHttpUrl
+	updateClusterTagsPath = strings.ReplaceAll(updateClusterTagsPath, "{project_id}", updateClusterClient.ProjectID)
+	updateClusterTagsPath = strings.ReplaceAll(updateClusterTagsPath, "{cluster_id}", clusterID)
+	updateClusterTagsPath = strings.ReplaceAll(updateClusterTagsPath, "{action}", action)
+
+	updateOpts := buildUpdateClusterTagsBodyParams(action, tags)
+	updateClusterOpt := golangsdk.RequestOpts{
+		KeepResponseBody: true,
+		JSONBody:         utils.RemoveNil(updateOpts),
+		OkCodes:          []int{204},
+	}
+
+	_, err := updateClusterClient.Request("POST", updateClusterTagsPath, &updateClusterOpt)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func resourceAutopilotClusterUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	cfg := meta.(*config.Config)
+	region := cfg.GetRegion(d)
+	id := d.Id()
+
+	var updateClusterProduct = "cce"
+
+	updateClusterClient, err := cfg.NewServiceClient(updateClusterProduct, region)
+	if err != nil {
+		return diag.Errorf("error creating CCE Client: %s", err)
+	}
+
+	if d.HasChanges("alias", "description", "custom_san", "eni_network") {
+		var updateClusterHttpUrl = "autopilot/v3/projects/{project_id}/clusters/{cluster_id}"
+
+		updateClusterPath := updateClusterClient.Endpoint + updateClusterHttpUrl
+		updateClusterPath = strings.ReplaceAll(updateClusterPath, "{project_id}", updateClusterClient.ProjectID)
+		updateClusterPath = strings.ReplaceAll(updateClusterPath, "{cluster_id}", id)
+
+		updateOpts := buildUpdateClusterBodyParams(d)
+		updateClusterOpt := golangsdk.RequestOpts{
+			KeepResponseBody: true,
+			JSONBody:         utils.RemoveNil(updateOpts),
+		}
+
+		_, err := updateClusterClient.Request("PUT", updateClusterPath, &updateClusterOpt)
+		if err != nil {
+			return diag.Errorf("error updating CCE autopolit cluster: %s", err)
+		}
+	}
+
+	if d.HasChange("eip_id") {
+		oldEip, newEip := d.GetChange("eip_id")
+
+		if oldEip.(string) != "" {
+			err = clusterEipAction(updateClusterClient, id, "")
+			if err != nil {
+				return diag.Errorf("error unbinding EIP from CCE autopilot cluster (%s): %s", id, err)
+			}
+		}
+
+		if newEip.(string) != "" {
+			err = clusterEipAction(updateClusterClient, id, newEip.(string))
+			if err != nil {
+				return diag.Errorf("error binding EIP to CCE autopilot cluster (%s): %s", id, err)
+			}
+		}
+	}
+
+	if d.HasChange("tags") {
+		oldTags, newTags := d.GetChange("tags")
+		if len(oldTags.(map[string]interface{})) > 0 {
+			err = clusterTagsAction(updateClusterClient, id, "delete", oldTags.(map[string]interface{}))
+			if err != nil {
+				return diag.Errorf("error removing tags from CCE autopilot cluster (%s): %s", id, err)
+			}
+		}
+
+		if len(newTags.(map[string]interface{})) > 0 {
+			err = clusterTagsAction(updateClusterClient, id, "create", newTags.(map[string]interface{}))
+			if err != nil {
+				return diag.Errorf("error adding tags to CCE autopilot cluster (%s): %s", id, err)
+			}
+		}
+	}
+
+	return resourceAutopilotClusterRead(ctx, d, meta)
 }
 
 func resourceAutopilotClusterDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {

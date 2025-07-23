@@ -23,7 +23,7 @@ func getWafDedicatedInstanceFunc(c *config.Config, state *terraform.ResourceStat
 	return instances.GetWithEpsId(client, state.Primary.ID, state.Primary.Attributes["enterprise_project_id"])
 }
 
-func TestAccWafDedicatedInstance_basic(t *testing.T) {
+func TestAccDedicatedInstance_basic(t *testing.T) {
 	var (
 		instance     instances.DedicatedInstance
 		resourceName = "huaweicloud_waf_dedicated_instance.test"
@@ -60,6 +60,8 @@ func TestAccWafDedicatedInstance_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "upgradable", "0"),
 					resource.TestCheckResourceAttr(resourceName, "res_tenant", "true"),
 					resource.TestCheckResourceAttr(resourceName, "anti_affinity", "true"),
+					resource.TestCheckResourceAttr(resourceName, "tags.foo", "bar"),
+					resource.TestCheckResourceAttr(resourceName, "tags.key", "value"),
 					resource.TestCheckResourceAttrSet(resourceName, "server_id"),
 					resource.TestCheckResourceAttrSet(resourceName, "service_ip"),
 					resource.TestCheckResourceAttrSet(resourceName, "subnet_id"),
@@ -82,6 +84,8 @@ func TestAccWafDedicatedInstance_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "upgradable", "0"),
 					resource.TestCheckResourceAttr(resourceName, "res_tenant", "true"),
 					resource.TestCheckResourceAttr(resourceName, "anti_affinity", "true"),
+					resource.TestCheckResourceAttr(resourceName, "tags.foo", "bar"),
+					resource.TestCheckResourceAttr(resourceName, "tags.key", "value"),
 					resource.TestCheckResourceAttrSet(resourceName, "server_id"),
 					resource.TestCheckResourceAttrSet(resourceName, "service_ip"),
 					resource.TestCheckResourceAttrSet(resourceName, "subnet_id"),
@@ -95,7 +99,7 @@ func TestAccWafDedicatedInstance_basic(t *testing.T) {
 				ImportState:             true,
 				ImportStateVerify:       true,
 				ImportStateIdFunc:       testWAFResourceImportState(resourceName),
-				ImportStateVerifyIgnore: []string{"res_tenant", "anti_affinity"},
+				ImportStateVerifyIgnore: []string{"res_tenant", "anti_affinity", "tags"},
 			},
 		},
 	})
@@ -116,6 +120,11 @@ resource "huaweicloud_waf_dedicated_instance" "test" {
   anti_affinity         = true
   enterprise_project_id = "%[3]s"
   
+  tags = {
+    foo = "bar"
+    key = "value"
+  }
+
   security_group = [
     huaweicloud_networking_secgroup.test.id
   ]
@@ -138,50 +147,14 @@ resource "huaweicloud_waf_dedicated_instance" "test" {
   anti_affinity         = true
   enterprise_project_id = "%[3]s"
   
+  tags = {
+    foo = "bar"
+    key = "value"
+  }
+
   security_group = [
     huaweicloud_networking_secgroup.test.id
   ]
 }
 `, common.TestBaseComputeResources(name), name, acceptance.HW_ENTERPRISE_MIGRATE_PROJECT_ID_TEST)
-}
-
-// This use case has dependencies and will be deleted later.
-func testAccWafDedicatedInstanceV1_conf(name string) string {
-	return fmt.Sprintf(`
-%s
-
-resource "huaweicloud_waf_dedicated_instance" "instance_1" {
-  name               = "%s"
-  available_zone     = data.huaweicloud_availability_zones.test.names[1]
-  specification_code = "waf.instance.professional"
-  ecs_flavor         = data.huaweicloud_compute_flavors.test.ids[0]
-  vpc_id             = huaweicloud_vpc.test.id
-  subnet_id          = huaweicloud_vpc_subnet.test.id
-  
-  security_group = [
-    huaweicloud_networking_secgroup.test.id
-  ]
-}
-`, common.TestBaseComputeResources(name), name)
-}
-
-// This use case has dependencies and will be deleted later.
-func testAccWafDedicatedInstance_epsId(name, epsId string) string {
-	return fmt.Sprintf(`
-%s
-
-resource "huaweicloud_waf_dedicated_instance" "instance_1" {
-  name                  = "%s"
-  available_zone        = data.huaweicloud_availability_zones.test.names[1]
-  specification_code    = "waf.instance.professional"
-  ecs_flavor            = data.huaweicloud_compute_flavors.test.ids[0]
-  enterprise_project_id = "%s"
-  vpc_id                = huaweicloud_vpc.test.id
-  subnet_id             = huaweicloud_vpc_subnet.test.id
-  
-  security_group = [
-    huaweicloud_networking_secgroup.test.id
-  ]
-}
-`, common.TestBaseComputeResources(name), name, epsId)
 }

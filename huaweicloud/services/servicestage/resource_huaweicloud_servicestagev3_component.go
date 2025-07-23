@@ -20,9 +20,33 @@ import (
 	"github.com/huaweicloud/terraform-provider-huaweicloud/huaweicloud/utils"
 )
 
-var v3ComponentNotFoundCodes = []string{
-	"SVCSTG.00100401",
-}
+var (
+	v3ComponentNotFoundCodes = []string{
+		"SVCSTG.00100401",
+	}
+
+	componentJsonParamKeys = []string{
+		"source",
+		"build",
+		"command",
+		"tomcat_opts",
+		"deploy_strategy.0.rolling_release",
+		"deploy_strategy.0.gray_release",
+		"update_strategy",
+	}
+
+	componentNonUpdatableParams = []string{
+		"application_id",
+		"environment_id",
+		"name",
+		"runtime_stack",
+		"runtime_stack.*.name",
+		"runtime_stack.*.type",
+		"runtime_stack.*.deploy_mode",
+		"runtime_stack.*.version",
+		"replica",
+	}
+)
 
 // @API ServiceStage POST /v3/{project_id}/cas/applications/{application_id}/components
 // @API ServiceStage GET /v3/{project_id}/cas/jobs/{job_id}
@@ -39,6 +63,8 @@ func ResourceV3Component() *schema.Resource {
 		Importer: &schema.ResourceImporter{
 			StateContext: resourceV3ComponentImportState,
 		},
+
+		CustomizeDiff: config.FlexibleForceNew(componentNonUpdatableParams),
 
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(20 * time.Minute),
@@ -57,51 +83,43 @@ func ResourceV3Component() *schema.Resource {
 			"application_id": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew:    true,
 				Description: `The application ID to which the component belongs.`,
 			},
 			"environment_id": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew:    true,
 				Description: `The environment ID where the component is deployed.`,
 			},
 			"name": {
 				Type:        schema.TypeString,
 				Required:    true,
-				ForceNew:    true,
 				Description: `The name of the component.`,
 			},
 			"runtime_stack": {
 				Type:     schema.TypeList,
 				Required: true,
-				ForceNew: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"name": {
 							Type:        schema.TypeString,
 							Required:    true,
-							ForceNew:    true,
 							Description: `The stack name.`,
 						},
 						"type": {
 							Type:        schema.TypeString,
 							Required:    true,
-							ForceNew:    true,
 							Description: `The stack type.`,
 						},
 						"deploy_mode": {
 							Type:        schema.TypeString,
 							Required:    true,
-							ForceNew:    true,
 							Description: `The deploy mode of the stack.`,
 						},
 						"version": {
 							Type:        schema.TypeString,
 							Optional:    true,
 							Computed:    true,
-							ForceNew:    true,
 							Description: `The stack version.`,
 						},
 					},
@@ -109,21 +127,16 @@ func ResourceV3Component() *schema.Resource {
 				Description: "The configuration of the runtime stack.",
 			},
 			"source": {
-				Type:         schema.TypeString,
-				Required:     true,
-				ValidateFunc: validation.StringIsJSON,
-				Description:  `The source configuration of the component, in JSON format.`,
+				Type:             schema.TypeString,
+				Required:         true,
+				ValidateFunc:     validation.StringIsJSON,
+				DiffSuppressFunc: utils.SuppressObjectDiffs(),
+				Description:      `The source configuration of the component, in JSON format.`,
 			},
 			"version": {
 				Type:        schema.TypeString,
 				Required:    true,
 				Description: `The version of the component.`,
-			},
-			"replica": {
-				Type:        schema.TypeInt,
-				Required:    true,
-				ForceNew:    true,
-				Description: `The replica number of the component.`,
 			},
 			"refer_resources": {
 				Type:     schema.TypeSet,
@@ -150,6 +163,18 @@ func ResourceV3Component() *schema.Resource {
 				},
 				Description: `The configuration of the reference resources.`,
 			},
+			"config_mode": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Computed:    true,
+				Description: `The configuration mode of the component.`,
+			},
+			"workload_content": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Computed:    true,
+				Description: `The workload content of the component, in JSON format.`,
+			},
 			"description": {
 				Type:        schema.TypeString,
 				Optional:    true,
@@ -157,34 +182,46 @@ func ResourceV3Component() *schema.Resource {
 				Description: `The description of the component.`,
 			},
 			"build": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validation.StringIsJSON,
-				Description:  `The build configuration of the component, in JSON format.`,
+				Type:             schema.TypeString,
+				Optional:         true,
+				ValidateFunc:     validation.StringIsJSON,
+				DiffSuppressFunc: utils.SuppressObjectDiffs(),
+				Description:      `The build configuration of the component, in JSON format.`,
+			},
+			"replica": {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Computed:    true,
+				Description: `The replica number of the component.`,
 			},
 			"limit_cpu": {
 				Type:        schema.TypeFloat,
 				Optional:    true,
+				Computed:    true,
 				Description: `The maximum number of the CPU limit.`,
 			},
 			"limit_memory": {
 				Type:        schema.TypeFloat,
 				Optional:    true,
+				Computed:    true,
 				Description: `The maximum number of the memory limit.`,
 			},
 			"request_cpu": {
 				Type:        schema.TypeFloat,
 				Optional:    true,
+				Computed:    true,
 				Description: `The number of the CPU request resources.`,
 			},
 			"request_memory": {
 				Type:        schema.TypeFloat,
 				Optional:    true,
+				Computed:    true,
 				Description: `The number of the memory request resources.`,
 			},
 			"envs": {
 				Type:     schema.TypeSet,
 				Optional: true,
+				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"name": {
@@ -195,6 +232,7 @@ func ResourceV3Component() *schema.Resource {
 						"value": {
 							Type:        schema.TypeString,
 							Optional:    true,
+							Computed:    true,
 							Description: `The value of the environment variable.`,
 						},
 					},
@@ -204,6 +242,7 @@ func ResourceV3Component() *schema.Resource {
 			"storages": {
 				Type:     schema.TypeSet,
 				Optional: true,
+				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"type": {
@@ -253,6 +292,7 @@ func ResourceV3Component() *schema.Resource {
 			"deploy_strategy": {
 				Type:     schema.TypeList,
 				Optional: true,
+				Computed: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -262,33 +302,68 @@ func ResourceV3Component() *schema.Resource {
 							Description: `The deploy type.`,
 						},
 						"rolling_release": {
-							Type:         schema.TypeString,
-							Optional:     true,
-							Computed:     true,
-							ValidateFunc: validation.StringIsJSON,
-							Description:  `The rolling release parameters, in JSON format.`,
+							Type:             schema.TypeString,
+							Optional:         true,
+							Computed:         true,
+							ValidateFunc:     validation.StringIsJSON,
+							DiffSuppressFunc: utils.SuppressObjectDiffs(),
+							Description:      `The rolling release parameters, in JSON format.`,
 						},
 						"gray_release": {
-							Type:         schema.TypeString,
-							Optional:     true,
-							Computed:     true,
-							ValidateFunc: validation.StringIsJSON,
-							Description:  `The gray release parameters, in JSON format.`,
+							Type:             schema.TypeString,
+							Optional:         true,
+							Computed:         true,
+							ValidateFunc:     validation.StringIsJSON,
+							DiffSuppressFunc: utils.SuppressObjectDiffs(),
+							Description:      `The gray release parameters, in JSON format.`,
+						},
+						"rolling_release_origin": {
+							Type:     schema.TypeString,
+							Computed: true,
+							Description: utils.SchemaDesc(
+								`The script configuration value of this change is also the original value used for comparison with
+the new value next time the change is made. The corresponding parameter name is 'deploy_strategy.0.rolling_release'.`,
+								utils.SchemaDescInput{
+									Internal: true,
+								},
+							),
+						},
+						"gray_release_origin": {
+							Type:     schema.TypeString,
+							Computed: true,
+							Description: utils.SchemaDesc(
+								`The script configuration value of this change is also the original value used for comparison with
+the new value next time the change is made. The corresponding parameter name is 'deploy_strategy.0.gray_release'.`,
+								utils.SchemaDescInput{
+									Internal: true,
+								},
+							),
 						},
 					},
 				},
 				Description: `The configuration of the deploy strategy.`,
 			},
+			// Most of the strategy configuration inputs for component deployment and upgrades have been changed from
+			// deploy_strategy to update_strategy now.
+			"update_strategy": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				ValidateFunc:     validation.StringIsJSON,
+				Description:      `The configuration of the update strategy, in JSON format.`,
+				DiffSuppressFunc: utils.SuppressObjectDiffs(),
+			},
 			"command": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				Computed:     true,
-				ValidateFunc: validation.StringIsJSON,
-				Description:  `The start commands of the component, in JSON format.`,
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				ValidateFunc:     validation.StringIsJSON,
+				DiffSuppressFunc: utils.SuppressObjectDiffs(),
+				Description:      `The start commands of the component, in JSON format.`,
 			},
 			"post_start": {
 				Type:        schema.TypeList,
 				Optional:    true,
+				Computed:    true,
 				MaxItems:    1,
 				Elem:        componentLifecycleSchema(),
 				Description: `The post start configuration.`,
@@ -296,6 +371,7 @@ func ResourceV3Component() *schema.Resource {
 			"pre_stop": {
 				Type:        schema.TypeList,
 				Optional:    true,
+				Computed:    true,
 				MaxItems:    1,
 				Elem:        componentLifecycleSchema(),
 				Description: `The pre stop configuration.`,
@@ -303,6 +379,7 @@ func ResourceV3Component() *schema.Resource {
 			"mesher": {
 				Type:     schema.TypeList,
 				Optional: true,
+				Computed: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -328,15 +405,17 @@ func ResourceV3Component() *schema.Resource {
 				Description: `The JVM parameters of the component.`,
 			},
 			"tomcat_opts": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				Computed:     true,
-				ValidateFunc: validation.StringIsJSON,
-				Description:  `The configuration of the tomcat server.`,
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				ValidateFunc:     validation.StringIsJSON,
+				DiffSuppressFunc: utils.SuppressObjectDiffs(),
+				Description:      `The configuration of the tomcat server.`,
 			},
 			"logs": {
 				Type:     schema.TypeSet,
 				Optional: true,
+				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"log_path": {
@@ -366,6 +445,7 @@ func ResourceV3Component() *schema.Resource {
 			"custom_metric": {
 				Type:     schema.TypeList,
 				Optional: true,
+				Computed: true,
 				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -391,18 +471,21 @@ func ResourceV3Component() *schema.Resource {
 			"affinity": {
 				Type:        schema.TypeSet,
 				Optional:    true,
+				Computed:    true,
 				Elem:        componentAffinitySchema(),
 				Description: `The affinity configuration of the component.`,
 			},
 			"anti_affinity": {
 				Type:        schema.TypeSet,
 				Optional:    true,
+				Computed:    true,
 				Elem:        componentAffinitySchema(),
 				Description: `The anti-affinity configuration of the component.`,
 			},
 			"liveness_probe": {
 				Type:        schema.TypeList,
 				Optional:    true,
+				Computed:    true,
 				MaxItems:    1,
 				Elem:        componentProbeSchema(),
 				Description: "The liveness probe configuration of the component.",
@@ -410,6 +493,7 @@ func ResourceV3Component() *schema.Resource {
 			"readiness_probe": {
 				Type:        schema.TypeList,
 				Optional:    true,
+				Computed:    true,
 				MaxItems:    1,
 				Elem:        componentProbeSchema(),
 				Description: "The readiness probe configuration of the component.",
@@ -417,6 +501,7 @@ func ResourceV3Component() *schema.Resource {
 			"external_accesses": {
 				Type:     schema.TypeSet,
 				Optional: true,
+				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"protocol": {
@@ -427,11 +512,13 @@ func ResourceV3Component() *schema.Resource {
 						"address": {
 							Type:        schema.TypeString,
 							Optional:    true,
+							Computed:    true,
 							Description: `The address of the external access.`,
 						},
 						"forward_port": {
 							Type:        schema.TypeInt,
 							Optional:    true,
+							Computed:    true,
 							Description: `The forward port of the external access.`,
 						},
 					},
@@ -456,6 +543,68 @@ func ResourceV3Component() *schema.Resource {
 				Computed:    true,
 				Description: `The latest update time of the component, in RFC3339 format.`,
 			},
+			// Internal parameters/attributes.
+			"enable_force_new": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validation.StringInSlice([]string{"true", "false"}, false),
+				Description:  utils.SchemaDesc("", utils.SchemaDescInput{Internal: true}),
+			},
+			"source_origin": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: utils.SchemaDesc(
+					`The script configuration value of this change is also the original value used for comparison with
+ the new value next time the change is made. The corresponding parameter name is 'source'.`,
+					utils.SchemaDescInput{
+						Internal: true,
+					},
+				),
+			},
+			"build_origin": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: utils.SchemaDesc(
+					`The script configuration value of this change is also the original value used for comparison with
+ the new value next time the change is made. The corresponding parameter name is 'build'.`,
+					utils.SchemaDescInput{
+						Internal: true,
+					},
+				),
+			},
+			"update_strategy_origin": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: utils.SchemaDesc(
+					`The script configuration value of this change is also the original value used for comparison with
+ the new value next time the change is made. The corresponding parameter name is 'update_strategy'.`,
+					utils.SchemaDescInput{
+						Internal: true,
+					},
+				),
+			},
+			"command_origin": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: utils.SchemaDesc(
+					`The script configuration value of this change is also the original value used for comparison with
+ the new value next time the change is made. The corresponding parameter name is 'command'.`,
+					utils.SchemaDescInput{
+						Internal: true,
+					},
+				),
+			},
+			"tomcat_opts_origin": {
+				Type:     schema.TypeString,
+				Computed: true,
+				Description: utils.SchemaDesc(
+					`The script configuration value of this change is also the original value used for comparison with
+ the new value next time the change is made. The corresponding parameter name is 'tomcat_opts'.`,
+					utils.SchemaDescInput{
+						Internal: true,
+					},
+				),
+			},
 		},
 	}
 }
@@ -471,26 +620,31 @@ func componentLifecycleSchema() *schema.Resource {
 			"scheme": {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: `The HTTP request type.`,
 			},
 			"host": {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: `The host (IP) of the lifecycle configuration.`,
 			},
 			"port": {
 				Type:        schema.TypeInt,
 				Optional:    true,
+				Computed:    true,
 				Description: `The port number of the lifecycle configuration.`,
 			},
 			"path": {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: `The request path of the lifecycle configuration.`,
 			},
 			"command": {
 				Type:        schema.TypeSet,
 				Optional:    true,
+				Computed:    true,
 				Elem:        &schema.Schema{Type: schema.TypeString},
 				Description: `The command list of the lifecycle configuration.`,
 			},
@@ -834,19 +988,22 @@ func buildV3ComponentCreateBodyParams(d *schema.ResourceData) map[string]interfa
 		"runtime_stack":   utils.ValueIgnoreEmpty(buildV3ComponentRuntimeStackConfig(d.Get("runtime_stack").([]interface{}))),
 		"source":          utils.StringToJson(d.Get("source").(string)),
 		"version":         d.Get("version").(string),
-		"replica":         d.Get("replica").(int),
 		"refer_resources": utils.ValueIgnoreEmpty(buildV3ComponentReferResources(d.Get("refer_resources").(*schema.Set))),
 		// Optional parameters.
 		"environment_id":    d.Get("environment_id").(string),
+		"config_mode":       utils.ValueIgnoreEmpty(d.Get("config_mode")),
+		"workload_content":  utils.ValueIgnoreEmpty(d.Get("workload_content")),
 		"description":       utils.ValueIgnoreEmpty(d.Get("description")),
 		"build":             utils.StringToJson(d.Get("build").(string)),
-		"limit_cpu":         d.Get("limit_cpu").(float64),
-		"limit_memory":      d.Get("limit_memory").(float64),
-		"request_cpu":       d.Get("request_cpu").(float64),
-		"request_memory":    d.Get("request_memory").(float64),
+		"replica":           utils.ValueIgnoreEmpty(d.Get("replica").(int)),
+		"limit_cpu":         utils.ValueIgnoreEmpty(d.Get("limit_cpu").(float64)),
+		"limit_memory":      utils.ValueIgnoreEmpty(d.Get("limit_memory").(float64)),
+		"request_cpu":       utils.ValueIgnoreEmpty(d.Get("request_cpu").(float64)),
+		"request_memory":    utils.ValueIgnoreEmpty(d.Get("request_memory").(float64)),
 		"envs":              utils.ValueIgnoreEmpty(buildV3ComponentEnvVariables(d.Get("envs").(*schema.Set))),
 		"storages":          utils.ValueIgnoreEmpty(buildV3ComponentStorages(d.Get("storages").(*schema.Set))),
 		"deploy_strategy":   utils.ValueIgnoreEmpty(buildV3ComponentDeployStrategy(d.Get("deploy_strategy").([]interface{}))),
+		"update_strategy":   utils.StringToJson(d.Get("update_strategy").(string)),
 		"command":           utils.StringToJson(d.Get("command").(string)),
 		"post_start":        utils.ValueIgnoreEmpty(buildV3ComponentLifecycle(d.Get("post_start").([]interface{}))),
 		"pre_stop":          utils.ValueIgnoreEmpty(buildV3ComponentLifecycle(d.Get("pre_stop").([]interface{}))),
@@ -969,6 +1126,14 @@ func resourceV3ComponentCreate(ctx context.Context, d *schema.ResourceData, meta
 		return diag.FromErr(err)
 	}
 
+	// If the request is successful, obtain the values ​​of all JSON parameters first and save them to the
+	// corresponding '_origin' attributes for subsequent determination and construction of the request body during
+	// next updates.
+	err = utils.RefreshObjectParamOriginValues(d, componentJsonParamKeys)
+	if err != nil {
+		return diag.Errorf("unable to refresh the origin values: %s", err)
+	}
+
 	return resourceV3ComponentRead(ctx, d, meta)
 }
 
@@ -1065,16 +1230,18 @@ func flattenV3ComponentStorages(storages []interface{}) []interface{} {
 	return result
 }
 
-func flattenV3ComponentDeployStrategy(strategy map[string]interface{}) []map[string]interface{} {
+func flattenV3ComponentDeployStrategy(d *schema.ResourceData, strategy map[string]interface{}) []map[string]interface{} {
 	if len(strategy) < 1 {
 		return nil
 	}
 
 	return []map[string]interface{}{
 		{
-			"type":            utils.PathSearch("type", strategy, nil),
-			"rolling_release": utils.PathSearch("rolling_release", strategy, nil),
-			"gray_release":    utils.PathSearch("gray_release", strategy, nil),
+			"type":                   utils.PathSearch("type", strategy, nil),
+			"rolling_release":        utils.JsonToString(utils.PathSearch("rolling_release", strategy, nil)),
+			"gray_release":           utils.JsonToString(utils.PathSearch("gray_release", strategy, nil)),
+			"rolling_release_origin": d.Get("deploy_strategy.0.rolling_release_origin"),
+			"gray_release_origin":    d.Get("deploy_strategy.0.gray_release_origin"),
 		},
 	}
 }
@@ -1106,6 +1273,23 @@ func flattenV3ComponentMesher(mesher map[string]interface{}) []map[string]interf
 			"port": utils.PathSearch("port", mesher, nil),
 		},
 	}
+}
+
+func flattenV3ComponentLogs(logList []interface{}) []interface{} {
+	if len(logList) < 1 {
+		return nil
+	}
+
+	result := make([]interface{}, 0, len(logList))
+	for _, val := range logList {
+		result = append(result, map[string]interface{}{
+			"log_path":         utils.PathSearch("log_path", val, nil),
+			"rotate":           utils.PathSearch("rotate", val, nil),
+			"host_path":        utils.PathSearch("host_path", val, nil),
+			"host_extend_path": utils.PathSearch("host_extend_path", val, nil),
+		})
+	}
+	return result
 }
 
 func flattenV3ComponentCustomMetric(customMetric map[string]interface{}) []map[string]interface{} {
@@ -1194,18 +1378,27 @@ func flattenV3ComponentReferResources(refResources []interface{}) []map[string]i
 	return result
 }
 
-func flattenV3ExternalAccesses(access map[string]interface{}) []map[string]interface{} {
-	if len(access) < 1 {
+func flattenV3ExternalAccesses(accesses []interface{}) []map[string]interface{} {
+	if len(accesses) < 1 {
 		return nil
 	}
 
-	return []map[string]interface{}{
-		{
+	result := make([]map[string]interface{}, 0, len(accesses))
+	for _, access := range accesses {
+		protocol := utils.PathSearch("protocol", access, "").(string)
+		lowercaseProtocol := strings.ToLower(protocol)
+		// Only external accesses of protocol http or https can be defined manually.
+		if lowercaseProtocol != "http" && lowercaseProtocol != "https" {
+			continue
+		}
+		result = append(result, map[string]interface{}{
 			"protocol":     utils.PathSearch("protocol", access, nil),
 			"address":      utils.PathSearch("address", access, nil),
 			"forward_port": utils.PathSearch("forward_port", access, nil),
-		},
+		})
 	}
+
+	return result
 }
 
 func resourceV3ComponentRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -1232,6 +1425,7 @@ func resourceV3ComponentRead(_ context.Context, d *schema.ResourceData, meta int
 		d.Set("runtime_stack", flattenV3ComponentRuntimeStackConfig(utils.PathSearch("runtime_stack", respBody,
 			make(map[string]interface{})).(map[string]interface{}))),
 		d.Set("environment_id", utils.PathSearch("environment_id", respBody, nil)),
+		d.Set("config_mode", utils.PathSearch("config_mode", respBody, nil)),
 		d.Set("description", utils.PathSearch("description", respBody, nil)),
 		d.Set("source", utils.JsonToString(utils.PathSearch("source", respBody, nil))),
 		d.Set("build", utils.JsonToString(utils.PathSearch("build", respBody, nil))),
@@ -1243,8 +1437,9 @@ func resourceV3ComponentRead(_ context.Context, d *schema.ResourceData, meta int
 		d.Set("envs", flattenV3ComponentEnvVariables(utils.PathSearch("envs[?!inner]", respBody, make([]interface{}, 0)).([]interface{}))),
 		d.Set("replica", utils.PathSearch("replica", respBody, nil)),
 		d.Set("storages", flattenV3ComponentStorages(utils.PathSearch("storages", respBody, make([]interface{}, 0)).([]interface{}))),
-		d.Set("deploy_strategy", flattenV3ComponentDeployStrategy(utils.PathSearch("deploy_strategy", respBody,
+		d.Set("deploy_strategy", flattenV3ComponentDeployStrategy(d, utils.PathSearch("deploy_strategy", respBody,
 			make(map[string]interface{})).(map[string]interface{}))),
+		d.Set("update_strategy", utils.JsonToString(utils.PathSearch("update_strategy", respBody, nil))),
 		d.Set("command", utils.JsonToString(utils.PathSearch("command", respBody, nil))),
 		d.Set("post_start", flattenV3ComponentLifecycle(utils.PathSearch("post_start", respBody,
 			make(map[string]interface{})).(map[string]interface{}))),
@@ -1255,7 +1450,7 @@ func resourceV3ComponentRead(_ context.Context, d *schema.ResourceData, meta int
 		d.Set("timezone", utils.PathSearch("timezone", respBody, nil)),
 		d.Set("jvm_opts", utils.PathSearch("jvm_opts", respBody, nil)),
 		d.Set("tomcat_opts", utils.JsonToString(utils.PathSearch("tomcat_opts", respBody, nil))),
-		d.Set("logs", utils.PathSearch("logs", respBody, nil)),
+		d.Set("logs", flattenV3ComponentLogs(utils.PathSearch("logs", respBody, make([]interface{}, 0)).([]interface{}))),
 		d.Set("custom_metric", flattenV3ComponentCustomMetric(utils.PathSearch("custom_metric", respBody,
 			make(map[string]interface{})).(map[string]interface{}))),
 		d.Set("affinity", flattenV3ComponentAffinity(utils.PathSearch("affinity", respBody,
@@ -1269,7 +1464,7 @@ func resourceV3ComponentRead(_ context.Context, d *schema.ResourceData, meta int
 		d.Set("refer_resources", flattenV3ComponentReferResources(utils.PathSearch("refer_resources", respBody,
 			make([]interface{}, 0)).([]interface{}))),
 		d.Set("external_accesses", flattenV3ExternalAccesses(utils.PathSearch("external_accesses", respBody,
-			make(map[string]interface{})).(map[string]interface{}))),
+			make([]interface{}, 0)).([]interface{}))),
 		d.Set("status", utils.PathSearch("status.component_status", respBody, nil)),
 		d.Set("created_at", utils.FormatTimeStampRFC3339(int64(utils.PathSearch("status.create_time", respBody,
 			float64(0)).(float64))/1000, false)),
@@ -1285,7 +1480,6 @@ func buildV3ComponentUpdteBodyParams(d *schema.ResourceData) map[string]interfac
 		// Cannot be updated but the request body needs them.
 		"name":          d.Get("name").(string),
 		"runtime_stack": utils.ValueIgnoreEmpty(buildV3ComponentRuntimeStackConfig(d.Get("runtime_stack").([]interface{}))),
-		"replica":       d.Get("replica").(int),
 		// Required parameters
 		"source":          utils.StringToJson(d.Get("source").(string)),
 		"version":         d.Get("version").(string),
@@ -1293,6 +1487,7 @@ func buildV3ComponentUpdteBodyParams(d *schema.ResourceData) map[string]interfac
 		// Optional parameters.
 		"description":       d.Get("description").(string),
 		"build":             utils.StringToJson(d.Get("build").(string)),
+		"replica":           d.Get("replica").(int),
 		"limit_cpu":         d.Get("limit_cpu").(float64),
 		"limit_memory":      d.Get("limit_memory").(float64),
 		"request_cpu":       d.Get("request_cpu").(float64),
@@ -1300,6 +1495,7 @@ func buildV3ComponentUpdteBodyParams(d *schema.ResourceData) map[string]interfac
 		"envs":              utils.ValueIgnoreEmpty(buildV3ComponentEnvVariables(d.Get("envs").(*schema.Set))),
 		"storages":          utils.ValueIgnoreEmpty(buildV3ComponentStorages(d.Get("storages").(*schema.Set))),
 		"deploy_strategy":   utils.ValueIgnoreEmpty(buildV3ComponentDeployStrategy(d.Get("deploy_strategy").([]interface{}))),
+		"update_strategy":   utils.StringToJson(d.Get("update_strategy").(string)),
 		"command":           utils.StringToJson(d.Get("command").(string)),
 		"post_start":        utils.ValueIgnoreEmpty(buildV3ComponentLifecycle(d.Get("post_start").([]interface{}))),
 		"pre_stop":          utils.ValueIgnoreEmpty(buildV3ComponentLifecycle(d.Get("pre_stop").([]interface{}))),
@@ -1341,10 +1537,16 @@ func componentStatusRefreshFunc(client *golangsdk.ServiceClient, appId, commpone
 }
 
 func waitV3ComponentUpdateCompleted(ctx context.Context, client *golangsdk.ServiceClient, d *schema.ResourceData) error {
+	expectedStatuses := []string{
+		"PENDING",
+		"RUNNING",
+		"GRAYING", // Upgrade the component by gray release and waiting for manual continuation.
+	}
+
 	stateConf := &resource.StateChangeConf{
 		Pending:      []string{"PENDING"},
 		Target:       []string{"COMPLETED"},
-		Refresh:      componentStatusRefreshFunc(client, d.Get("application_id").(string), d.Id(), []string{"PENDING", "RUNNING"}),
+		Refresh:      componentStatusRefreshFunc(client, d.Get("application_id").(string), d.Id(), expectedStatuses),
 		Timeout:      d.Timeout(schema.TimeoutUpdate),
 		PollInterval: 10 * time.Second,
 	}
@@ -1390,6 +1592,15 @@ func resourceV3ComponentUpdate(ctx context.Context, d *schema.ResourceData, meta
 	if err != nil {
 		return diag.FromErr(err)
 	}
+
+	// If the request is successful, obtain the values ​​of all JSON parameters first and save them to the
+	// corresponding '_origin' attributes for subsequent determination and construction of the request body during
+	// next updates.
+	err = utils.RefreshObjectParamOriginValues(d, componentJsonParamKeys)
+	if err != nil {
+		return diag.Errorf("unable to refresh the origin values: %s", err)
+	}
+
 	return resourceV3ComponentRead(ctx, d, meta)
 }
 

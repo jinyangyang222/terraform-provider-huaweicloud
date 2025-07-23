@@ -2,68 +2,58 @@ package iotda
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/terraform"
 
-	"github.com/huaweicloud/huaweicloud-sdk-go-v3/services/iotda/v5/model"
+	"github.com/chnsz/golangsdk"
 
 	"github.com/huaweicloud/terraform-provider-huaweicloud/huaweicloud/config"
 	"github.com/huaweicloud/terraform-provider-huaweicloud/huaweicloud/services/acceptance"
+	"github.com/huaweicloud/terraform-provider-huaweicloud/huaweicloud/services/iotda"
+	"github.com/huaweicloud/terraform-provider-huaweicloud/huaweicloud/utils"
 )
 
-func getDeviceAsyncCommandFunc(conf *config.Config, state *terraform.ResourceState) (interface{}, error) {
-	client, err := conf.HcIoTdaV5Client(acceptance.HW_REGION_NAME, WithDerivedAuth())
+func getDeviceAsyncCommandFunc(cfg *config.Config, state *terraform.ResourceState) (interface{}, error) {
+	var (
+		region    = acceptance.HW_REGION_NAME
+		isDerived = iotda.WithDerivedAuth(cfg, region)
+		httpUrl   = "v5/iot/{project_id}/devices/{device_id}/async-commands/{command_id}"
+	)
+
+	client, err := cfg.NewServiceClientWithDerivedAuth("iotda", region, isDerived)
 	if err != nil {
-		return nil, fmt.Errorf("error creating IoTDA v5 client: %s", err)
+		return nil, fmt.Errorf("error creating IoTDA client: %s", err)
 	}
 
-	return client.ShowAsyncDeviceCommand(&model.ShowAsyncDeviceCommandRequest{DeviceId: state.Primary.Attributes["device_id"],
-		CommandId: state.Primary.ID})
+	getPath := client.Endpoint + httpUrl
+	getPath = strings.ReplaceAll(getPath, "{project_id}", client.ProjectID)
+	getPath = strings.ReplaceAll(getPath, "{device_id}", state.Primary.Attributes["device_id"])
+	getPath = strings.ReplaceAll(getPath, "{command_id}", state.Primary.ID)
+	getOpts := golangsdk.RequestOpts{
+		KeepResponseBody: true,
+	}
+
+	getResp, err := client.Request("GET", getPath, &getOpts)
+	if err != nil {
+		return nil, fmt.Errorf("error retrieving device asynchronous command: %s", err)
+	}
+
+	return utils.FlattenResponse(getResp)
 }
 
 func TestAccDeviceAsyncCommand_basic(t *testing.T) {
-	var obj model.ShowDeviceResponse
-
-	name := acceptance.RandomAccResourceName()
-	rName := "huaweicloud_iotda_device_async_command.test"
-	rc := acceptance.InitResourceCheck(
-		rName,
-		&obj,
-		getDeviceAsyncCommandFunc,
+	var (
+		commondObj interface{}
+		name       = acceptance.RandomAccResourceName()
+		rName      = "huaweicloud_iotda_device_async_command.test"
 	)
 
-	resource.Test(t, resource.TestCase{
-		PreCheck:          func() { acceptance.TestAccPreCheck(t) },
-		ProviderFactories: acceptance.TestAccProviderFactories,
-		CheckDestroy:      rc.CheckResourceDestroy(),
-		Steps: []resource.TestStep{
-			{
-				Config: testAccDeviceAsyncCommand_basic(name),
-				Check: resource.ComposeTestCheckFunc(
-					rc.CheckResourceExists(),
-					resource.TestCheckResourceAttrPair(rName, "device_id", "huaweicloud_iotda_device.test", "id"),
-					resource.TestCheckResourceAttrPair(rName, "service_id", "huaweicloud_iotda_product.test", "services.0.id"),
-					resource.TestCheckResourceAttrPair(rName, "name", "huaweicloud_iotda_product.test", "services.0.commands.0.name"),
-					resource.TestCheckResourceAttr(rName, "send_strategy", "delay"),
-					resource.TestCheckResourceAttr(rName, "expire_time", "80000"),
-					resource.TestCheckResourceAttrSet(rName, "status"),
-					resource.TestCheckResourceAttrSet(rName, "created_at"),
-				),
-			},
-		},
-	})
-}
-
-func TestAccDeviceAsyncCommand_derived(t *testing.T) {
-	var obj model.ShowDeviceResponse
-
-	name := acceptance.RandomAccResourceName()
-	rName := "huaweicloud_iotda_device_async_command.test"
 	rc := acceptance.InitResourceCheck(
 		rName,
-		&obj,
+		&commondObj,
 		getDeviceAsyncCommandFunc,
 	)
 
@@ -88,18 +78,30 @@ func TestAccDeviceAsyncCommand_derived(t *testing.T) {
 					resource.TestCheckResourceAttrSet(rName, "created_at"),
 				),
 			},
+			{
+				Config: testAccDeviceAsyncCommand_custom(name),
+				Check: resource.ComposeTestCheckFunc(
+					rc.CheckResourceExists(),
+					resource.TestCheckResourceAttrPair(rName, "device_id", "huaweicloud_iotda_device.test", "id"),
+					resource.TestCheckResourceAttr(rName, "send_strategy", "immediately"),
+					resource.TestCheckResourceAttrSet(rName, "sent_time"),
+					resource.TestCheckResourceAttrSet(rName, "created_at"),
+				),
+			},
 		},
 	})
 }
 
 func testAccDeviceAsyncCommand_base(name string) string {
 	return fmt.Sprintf(`
+%[1]s
+
 resource "huaweicloud_iotda_space" "test" {
-  name = "%[1]s"
+  name = "%[2]s"
 }
 
 resource "huaweicloud_iotda_product" "test" {
-  name        = "%[1]s"
+  name        = "%[2]s"
   device_type = "AI"
   protocol    = "CoAP"
   space_id    = huaweicloud_iotda_space.test.id
@@ -130,12 +132,12 @@ resource "huaweicloud_iotda_product" "test" {
 
 resource "huaweicloud_iotda_device" "test" {
   node_id     = "101112026"
-  name        = "%[1]s"
+  name        = "%[2]s"
   space_id    = huaweicloud_iotda_space.test.id
   product_id  = huaweicloud_iotda_product.test.id
   description = "demo"
 }
-`, name)
+`, buildIoTDAEndpoint(), name)
 }
 
 func testAccDeviceAsyncCommand_basic(name string) string {
@@ -152,6 +154,17 @@ resource "huaweicloud_iotda_device_async_command" "test" {
   paras = {
     (huaweicloud_iotda_product.test.services.0.commands.0.paras.0.name) = "tf-acc"
   }
+}
+`, testAccDeviceAsyncCommand_base(name))
+}
+
+func testAccDeviceAsyncCommand_custom(name string) string {
+	return fmt.Sprintf(`
+%[1]s
+
+resource "huaweicloud_iotda_device_async_command" "test" {
+  device_id     = huaweicloud_iotda_device.test.id
+  send_strategy = "immediately"
 }
 `, testAccDeviceAsyncCommand_base(name))
 }

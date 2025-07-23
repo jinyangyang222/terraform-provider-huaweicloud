@@ -34,11 +34,13 @@ func TestAccV3Component_basic(t *testing.T) {
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
 			acceptance.TestAccPreCheck(t)
-			// Make sure at least one of node exist.
-			acceptance.TestAccPreCheckCceClusterId(t)
-			// Make sure the networks of the CCE cluster and the CSE engine are same.
+			// Make sure the networks of the CCE cluster, CSE engine and ELB loadbalancer are same.
+			acceptance.TestAccPreCheckCceClusterId(t) // Make sure at least one of node exist.
 			acceptance.TestAccPreCheckCSEMicroserviceEngineID(t)
-			acceptance.TestAccPreCheckImsImageUrl(t)
+			acceptance.TestAccPreCheckElbLoadbalancerID(t)
+			// Two different JAR packages need to be provided.
+			acceptance.TestAccPreCheckServiceStageJarPkgStorageURLs(t, 2)
+			acceptance.TestAccPreCheckCertificateBase(t)
 		},
 		ProviderFactories: acceptance.TestAccProviderFactories,
 		CheckDestroy:      rc.CheckResourceDestroy(),
@@ -50,34 +52,32 @@ func TestAccV3Component_basic(t *testing.T) {
 					resource.TestCheckResourceAttrPair(resourceName, "application_id", "huaweicloud_servicestagev3_application.test", "id"),
 					resource.TestCheckResourceAttrPair(resourceName, "environment_id", "huaweicloud_servicestagev3_environment.test", "id"),
 					resource.TestCheckResourceAttr(resourceName, "name", name),
-					resource.TestCheckResourceAttr(resourceName, "runtime_stack.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "runtime_stack.0.deploy_mode", "container"),
-					resource.TestCheckResourceAttr(resourceName, "runtime_stack.0.name", "Docker"),
-					resource.TestCheckResourceAttr(resourceName, "runtime_stack.0.type", "Docker"),
-					resource.TestCheckResourceAttr(resourceName, "source",
-						fmt.Sprintf("{\"auth\":\"iam\",\"kind\":\"image\",\"storage\":\"swr\",\"url\":\"%s\"}", acceptance.HW_IMS_IMAGE_URL)),
 					resource.TestCheckResourceAttr(resourceName, "version", "1.0.1"),
-					resource.TestCheckResourceAttr(resourceName, "replica", "2"),
-					resource.TestCheckResourceAttr(resourceName, "refer_resources.#", "2"),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "1"),
-					resource.TestCheckResourceAttr(resourceName, "tags.foo", "bar"),
 					resource.TestCheckResourceAttr(resourceName, "description", "Created by terraform script"),
 					resource.TestCheckResourceAttr(resourceName, "limit_cpu", "0.25"),
 					resource.TestCheckResourceAttr(resourceName, "limit_memory", "0.5"),
 					resource.TestCheckResourceAttr(resourceName, "request_cpu", "0.25"),
 					resource.TestCheckResourceAttr(resourceName, "request_memory", "0.5"),
+					resource.TestCheckResourceAttr(resourceName, "replica", "2"),
+					resource.TestCheckResourceAttr(resourceName, "timezone", "Asia/Shanghai"),
+					resource.TestCheckResourceAttrSet(resourceName, "build"),
+					resource.TestCheckResourceAttrSet(resourceName, "source"),
+					resource.TestCheckResourceAttr(resourceName, "runtime_stack.#", "1"),
+					resource.TestCheckResourceAttrSet(resourceName, "runtime_stack.0.deploy_mode"),
+					resource.TestCheckResourceAttrSet(resourceName, "runtime_stack.0.name"),
+					resource.TestCheckResourceAttrSet(resourceName, "runtime_stack.0.type"),
+					resource.TestCheckResourceAttr(resourceName, "refer_resources.#", "3"),
+					resource.TestCheckResourceAttr(resourceName, "tags.%", "2"),
+					resource.TestCheckResourceAttr(resourceName, "tags.foo", "bar"),
+					resource.TestCheckResourceAttr(resourceName, "tags.key", "value"),
+					resource.TestCheckResourceAttr(resourceName, "external_accesses.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "external_accesses.0.protocol", "HTTP"),
+					resource.TestCheckResourceAttr(resourceName, "external_accesses.0.forward_port", "8000"),
+					resource.TestCheckResourceAttrPair(resourceName, "external_accesses.0.address",
+						"huaweicloud_elb_certificate.test", "domain"),
 					resource.TestCheckResourceAttr(resourceName, "envs.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "envs.0.name", "env_name"),
-					resource.TestCheckResourceAttr(resourceName, "envs.0.value", "env_value"),
-					resource.TestCheckResourceAttr(resourceName, "storages.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "storages.0.type", "HostPath"),
-					resource.TestCheckResourceAttr(resourceName, "storages.0.name", name),
-					resource.TestCheckResourceAttr(resourceName, "storages.0.parameters", "{\"default_mode\":0,\"path\":\"/tmp\"}"),
-					resource.TestCheckResourceAttr(resourceName, "storages.0.mounts.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "storages.0.mounts.0.path", "/category"),
-					resource.TestCheckResourceAttr(resourceName, "storages.0.mounts.0.sub_path", "sub"),
-					resource.TestCheckResourceAttr(resourceName, "storages.0.mounts.0.read_only", "false"),
-					resource.TestCheckResourceAttr(resourceName, "command", "{\"args\":[\"-a\"],\"command\":[\"ls\"]}"),
+					resource.TestCheckResourceAttr(resourceName, "envs.0.name", "MOCK_ENABLED"),
+					resource.TestCheckResourceAttr(resourceName, "envs.0.value", "true"),
 					resource.TestCheckResourceAttr(resourceName, "post_start.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "post_start.0.command.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "post_start.0.command.0", "test"),
@@ -88,7 +88,15 @@ func TestAccV3Component_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "pre_stop.0.type", "command"),
 					resource.TestCheckResourceAttr(resourceName, "mesher.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "mesher.0.port", "60"),
-					resource.TestCheckResourceAttr(resourceName, "timezone", "Asia/Shanghai"),
+					resource.TestCheckResourceAttr(resourceName, "storages.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "storages.0.type", "HostPath"),
+					resource.TestCheckResourceAttr(resourceName, "storages.0.name", name),
+					resource.TestCheckResourceAttrSet(resourceName, "storages.0.parameters"),
+					resource.TestCheckResourceAttr(resourceName, "storages.0.mounts.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "storages.0.mounts.0.path", "/category"),
+					resource.TestCheckResourceAttr(resourceName, "storages.0.mounts.0.sub_path", "sub"),
+					resource.TestCheckResourceAttr(resourceName, "storages.0.mounts.0.read_only", "true"),
+					resource.TestCheckResourceAttrSet(resourceName, "command"),
 					resource.TestCheckResourceAttr(resourceName, "logs.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "logs.0.log_path", "/tmp"),
 					resource.TestCheckResourceAttr(resourceName, "logs.0.rotate", "Hourly"),
@@ -99,7 +107,7 @@ func TestAccV3Component_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "custom_metric.0.port", "600"),
 					resource.TestCheckResourceAttr(resourceName, "custom_metric.0.dimensions", "cpu_usage,mem_usage"),
 					resource.TestCheckResourceAttr(resourceName, "affinity.#", "2"),
-					resource.TestCheckResourceAttr(resourceName, "affinity.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "anti_affinity.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "liveness_probe.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "liveness_probe.0.type", "tcp"),
 					resource.TestCheckResourceAttr(resourceName, "liveness_probe.0.delay", "30"),
@@ -113,6 +121,7 @@ func TestAccV3Component_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "readiness_probe.0.host", "127.0.0.1"),
 					resource.TestCheckResourceAttr(resourceName, "readiness_probe.0.port", "8000"),
 					resource.TestCheckResourceAttr(resourceName, "readiness_probe.0.path", "/v1/test"),
+					resource.TestCheckResourceAttrSet(resourceName, "update_strategy"),
 					resource.TestCheckResourceAttrSet(resourceName, "status"),
 					resource.TestMatchResourceAttr(resourceName, "created_at",
 						regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}?(Z|([+-]\d{2}:\d{2}))$`)),
@@ -125,45 +134,51 @@ func TestAccV3Component_basic(t *testing.T) {
 					resource.TestCheckResourceAttrPair(resourceName, "application_id", "huaweicloud_servicestagev3_application.test", "id"),
 					resource.TestCheckResourceAttrPair(resourceName, "environment_id", "huaweicloud_servicestagev3_environment.test", "id"),
 					resource.TestCheckResourceAttr(resourceName, "name", name),
-					resource.TestCheckResourceAttr(resourceName, "runtime_stack.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "runtime_stack.0.deploy_mode", "container"),
-					resource.TestCheckResourceAttr(resourceName, "runtime_stack.0.name", "Docker"),
-					resource.TestCheckResourceAttr(resourceName, "runtime_stack.0.type", "Docker"),
-					resource.TestCheckResourceAttr(resourceName, "source",
-						fmt.Sprintf("{\"auth\":\"iam\",\"kind\":\"image\",\"storage\":\"swr\",\"url\":\"%s\"}", acceptance.HW_IMS_IMAGE_URL)),
 					resource.TestCheckResourceAttr(resourceName, "version", "1.0.2"),
-					resource.TestCheckResourceAttr(resourceName, "replica", "2"),
-					resource.TestCheckResourceAttr(resourceName, "refer_resources.#", "2"),
-					resource.TestCheckResourceAttr(resourceName, "tags.%", "1"),
-					resource.TestCheckResourceAttr(resourceName, "tags.foo", "baar"),
 					resource.TestCheckResourceAttr(resourceName, "description", "Updated by terraform script"),
-					resource.TestCheckResourceAttr(resourceName, "limit_cpu", "0.5"),
-					resource.TestCheckResourceAttr(resourceName, "limit_memory", "1"),
-					resource.TestCheckResourceAttr(resourceName, "request_cpu", "0.5"),
-					resource.TestCheckResourceAttr(resourceName, "request_memory", "1"),
+					resource.TestCheckResourceAttr(resourceName, "limit_cpu", "0.25"),
+					resource.TestCheckResourceAttr(resourceName, "limit_memory", "0.5"),
+					resource.TestCheckResourceAttr(resourceName, "request_cpu", "0.25"),
+					resource.TestCheckResourceAttr(resourceName, "request_memory", "0.5"),
+					resource.TestCheckResourceAttr(resourceName, "replica", "2"),
+					resource.TestCheckResourceAttr(resourceName, "timezone", "Asia/Shanghai"),
+					resource.TestCheckResourceAttrSet(resourceName, "build"),
+					resource.TestCheckResourceAttrSet(resourceName, "source"),
+					resource.TestCheckResourceAttr(resourceName, "runtime_stack.#", "1"),
+					resource.TestCheckResourceAttrSet(resourceName, "runtime_stack.0.deploy_mode"),
+					resource.TestCheckResourceAttrSet(resourceName, "runtime_stack.0.name"),
+					resource.TestCheckResourceAttrSet(resourceName, "runtime_stack.0.type"),
+					resource.TestCheckResourceAttr(resourceName, "refer_resources.#", "3"),
+					resource.TestCheckResourceAttr(resourceName, "tags.%", "2"),
+					resource.TestCheckResourceAttr(resourceName, "tags.foo", "baar"),
+					resource.TestCheckResourceAttr(resourceName, "tags.new_key", "value"),
+					resource.TestCheckResourceAttr(resourceName, "external_accesses.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "external_accesses.0.protocol", "HTTP"),
+					resource.TestCheckResourceAttr(resourceName, "external_accesses.0.forward_port", "8080"),
+					resource.TestCheckResourceAttrPair(resourceName, "external_accesses.0.address",
+						"huaweicloud_elb_certificate.test", "domain"),
 					resource.TestCheckResourceAttr(resourceName, "envs.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "envs.0.name", "new_env_name"),
-					resource.TestCheckResourceAttr(resourceName, "envs.0.value", "new_env_value"),
+					resource.TestCheckResourceAttr(resourceName, "envs.0.name", "MOCK_ENABLED"),
+					resource.TestCheckResourceAttr(resourceName, "envs.0.value", "false"),
+					resource.TestCheckResourceAttr(resourceName, "post_start.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "post_start.0.command.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "post_start.0.command.0", "new test command"),
+					resource.TestCheckResourceAttr(resourceName, "post_start.0.type", "command"),
+					resource.TestCheckResourceAttr(resourceName, "pre_stop.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "pre_stop.0.command.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "pre_stop.0.command.0", "new test command"),
+					resource.TestCheckResourceAttr(resourceName, "pre_stop.0.type", "command"),
+					resource.TestCheckResourceAttr(resourceName, "mesher.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "mesher.0.port", "100"),
 					resource.TestCheckResourceAttr(resourceName, "storages.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "storages.0.type", "HostPath"),
-					resource.TestCheckResourceAttr(resourceName, "storages.0.name", fmt.Sprintf("%s-new", name)),
-					resource.TestCheckResourceAttr(resourceName, "storages.0.parameters", "{\"default_mode\":0,\"path\":\"/tmp/new\"}"),
+					resource.TestCheckResourceAttr(resourceName, "storages.0.name", name+"-new"),
+					resource.TestCheckResourceAttrSet(resourceName, "storages.0.parameters"),
 					resource.TestCheckResourceAttr(resourceName, "storages.0.mounts.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "storages.0.mounts.0.path", "/category/new"),
 					resource.TestCheckResourceAttr(resourceName, "storages.0.mounts.0.sub_path", "sub/new"),
 					resource.TestCheckResourceAttr(resourceName, "storages.0.mounts.0.read_only", "true"),
-					resource.TestCheckResourceAttr(resourceName, "command", "{\"args\":[\"-l\"],\"command\":[\"ls\"]}"),
-					resource.TestCheckResourceAttr(resourceName, "post_start.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "post_start.0.command.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "post_start.0.command.0", "newtest"),
-					resource.TestCheckResourceAttr(resourceName, "post_start.0.type", "command"),
-					resource.TestCheckResourceAttr(resourceName, "pre_stop.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "pre_stop.0.command.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "pre_stop.0.command.0", "newtest"),
-					resource.TestCheckResourceAttr(resourceName, "pre_stop.0.type", "command"),
-					resource.TestCheckResourceAttr(resourceName, "mesher.#", "1"),
-					resource.TestCheckResourceAttr(resourceName, "mesher.0.port", "80"),
-					resource.TestCheckResourceAttr(resourceName, "timezone", "Asia/HongKong"),
+					resource.TestCheckResourceAttrSet(resourceName, "command"),
 					resource.TestCheckResourceAttr(resourceName, "logs.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "logs.0.log_path", "/tmp/new"),
 					resource.TestCheckResourceAttr(resourceName, "logs.0.rotate", "Daily"),
@@ -174,7 +189,7 @@ func TestAccV3Component_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "custom_metric.0.port", "800"),
 					resource.TestCheckResourceAttr(resourceName, "custom_metric.0.dimensions", "mem_usage"),
 					resource.TestCheckResourceAttr(resourceName, "affinity.#", "2"),
-					resource.TestCheckResourceAttr(resourceName, "affinity.#", "2"),
+					resource.TestCheckResourceAttr(resourceName, "anti_affinity.#", "2"),
 					resource.TestCheckResourceAttr(resourceName, "liveness_probe.#", "1"),
 					resource.TestCheckResourceAttr(resourceName, "liveness_probe.0.type", "tcp"),
 					resource.TestCheckResourceAttr(resourceName, "liveness_probe.0.delay", "60"),
@@ -188,6 +203,8 @@ func TestAccV3Component_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "readiness_probe.0.host", "192.168.0.1"),
 					resource.TestCheckResourceAttr(resourceName, "readiness_probe.0.port", "8080"),
 					resource.TestCheckResourceAttr(resourceName, "readiness_probe.0.path", "/v1/test/new"),
+					resource.TestCheckResourceAttr(resourceName, "deploy_strategy.#", "1"),
+					resource.TestCheckResourceAttrSet(resourceName, "update_strategy"),
 					resource.TestCheckResourceAttrSet(resourceName, "status"),
 					resource.TestMatchResourceAttr(resourceName, "updated_at",
 						regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}?(Z|([+-]\d{2}:\d{2}))$`)),
@@ -200,6 +217,12 @@ func TestAccV3Component_basic(t *testing.T) {
 				ImportStateIdFunc: testAccV3ComponentImportStateIdFunc(resourceName),
 				ImportStateVerifyIgnore: []string{
 					"tags",
+					"source_origin",
+					"build_origin",
+					"deploy_strategy.0.rolling_release_origin",
+					"command_origin",
+					"tomcat_opts_origin",
+					"update_strategy_origin",
 				},
 			},
 		},
@@ -230,20 +253,26 @@ data "huaweicloud_cce_clusters" "test" {
   cluster_id = "%[1]s"
 }
 
+data "huaweicloud_cse_microservice_engines" "test" {}
+
+data "huaweicloud_elb_loadbalancers" "test" {
+  loadbalancer_id = "%[2]s"
+}
+
 data "huaweicloud_servicestagev3_runtime_stacks" "test" {}
 
 locals {
-  docker_runtime_stack = try([for v in data.huaweicloud_servicestagev3_runtime_stacks.test.runtime_stacks: v if
-    v.type == "Docker" && v.status == "Supported"][0], null)
+  java_runtime_stack = try([for o in data.huaweicloud_servicestagev3_runtime_stacks.test.runtime_stacks:
+    o if o.type == "Java" && o.deploy_mode == "container"][0], {})
 }
 
 resource "huaweicloud_servicestagev3_application" "test" {
-  name                  = "%[2]s"
+  name                  = "%[3]s"
   enterprise_project_id = "0"
 }
 
 resource "huaweicloud_servicestagev3_environment" "test" {
-  name                  = "%[2]s"
+  name                  = "%[3]s"
   vpc_id                = try(data.huaweicloud_cce_clusters.test.clusters[0].vpc_id, "")
   enterprise_project_id = "0"
 }
@@ -252,17 +281,33 @@ resource "huaweicloud_servicestagev3_environment_associate" "test" {
   environment_id = huaweicloud_servicestagev3_environment.test.id
 
   resources {
-    id   = "%[1]s"
+    id   = try(data.huaweicloud_cce_clusters.test.clusters[0].id, "")
     type = "cce"
   }
   resources {
-    id   = "%[3]s"
+    id   = "%[4]s"
     type = "cse"
   }
+  resources {
+    id   = try(data.huaweicloud_elb_loadbalancers.test.loadbalancers[0].id, "")
+    type = "elb"
+  }
+}
+
+resource "huaweicloud_elb_certificate" "test" {
+  name        = "test-server"
+  domain      = "p2cserver.com"
+  type        = "server"
+  private_key = "%[5]s"
+  certificate = "%[6]s"
 }
 `, acceptance.HW_CCE_CLUSTER_ID,
+		acceptance.HW_ELB_LOADBALANCER_ID,
 		name,
-		acceptance.HW_CSE_MICROSERVICE_ENGINE_ID)
+		acceptance.HW_CSE_MICROSERVICE_ENGINE_ID,
+		acceptance.HW_CERTIFICATE_PRIVATE_KEY,
+		acceptance.HW_CERTIFICATE_CONTENT,
+	)
 }
 
 func testAccV3Component_basic_step1(name string) string {
@@ -270,77 +315,75 @@ func testAccV3Component_basic_step1(name string) string {
 %[1]s
 
 resource "huaweicloud_servicestagev3_component" "test" {
-  depends_on = [
-    huaweicloud_servicestagev3_environment_associate.test
-  ]
-
   application_id = huaweicloud_servicestagev3_application.test.id
   environment_id = huaweicloud_servicestagev3_environment.test.id
   name           = "%[2]s"
-
-  runtime_stack {
-    deploy_mode = try(local.docker_runtime_stack.deploy_mode, null)
-    name        = try(local.docker_runtime_stack.name, null)
-    type        = try(local.docker_runtime_stack.type, null)
-    version     = try(local.docker_runtime_stack.version, null)
-  }
-
-  source = jsonencode({
-    "auth": "iam",
-    "kind": "image",
-    "storage": "swr",
-    "url": "%[3]s"
-  })
-
-  version = "1.0.1"
-  replica = 2
-
-  refer_resources {
-    id         = "%[4]s"
-    type       = "cce"
-    parameters = jsonencode({
-      "namespace": "default",
-      "type": "VirtualMachine"
-    })
-  }
-  refer_resources {
-    id   = "%[5]s"
-    type = "cse"
-  }
-
-  tags = {
-    foo = "bar"
-  }
-
+  version        = "1.0.1"
   description    = "Created by terraform script"
   limit_cpu      = 0.25
   limit_memory   = 0.5
   request_cpu    = 0.25
   request_memory = 0.5
+  replica        = 2
+  timezone       = "Asia/Shanghai"
+
+  build = jsonencode({
+    "parameters" : {
+      "cluster_id": try(data.huaweicloud_cce_clusters.test.clusters[0].id, ""),
+      "dockerfile_path": "./",
+      "build_env_selected": "current"
+    }
+  })
+
+  source = jsonencode({
+    "kind": "package",
+    "storage": "obs",
+    "url": try(element(split(",", "%[3]s"), 0), "")
+  })
+
+  runtime_stack {
+    deploy_mode = try(local.java_runtime_stack.deploy_mode, "container")
+    name        = try(local.java_runtime_stack.name, "OpenJDK17")
+    type        = try(local.java_runtime_stack.type, "Java")
+    version     = try(local.java_runtime_stack.version, null)
+  }
+
+  refer_resources {
+    id   = try(data.huaweicloud_cce_clusters.test.clusters[0].id, "")
+    type = "cce"
+    parameters = jsonencode({
+      "namespace": "default",
+      "type": "VirtualMachine"
+      "name": format("%%s-first-version", try(data.huaweicloud_cce_clusters.test.clusters[0].name, ""))
+    })
+  }
+  refer_resources {
+    id   = try(data.huaweicloud_elb_loadbalancers.test.loadbalancers[0].id, "")
+    type = "elb"
+    parameters = jsonencode({
+      "name": try(data.huaweicloud_elb_loadbalancers.test.loadbalancers[0].name, "")
+    })
+  }
+  refer_resources {
+    id   = "%[4]s"
+    type = "cse"
+  }
+
+  tags = {
+    foo = "bar"
+    key = "value"
+  }
+
+  external_accesses {
+    protocol     = "HTTP"
+    forward_port = "8000"
+    address      = huaweicloud_elb_certificate.test.domain
+  }
 
   envs {
-    name  = "env_name"
-    value = "env_value"
+    name  = "MOCK_ENABLED"
+    value = "true"
   }
-
-  storages {
-    type       = "HostPath"
-    name       = "%[2]s"
-    parameters = jsonencode({
-      "default_mode": 0,
-      "path": "/tmp"
-    })
-    mounts {
-      path      = "/category"
-      sub_path  = "sub"
-      read_only = false
-    }
-  }
-
-  command = jsonencode({
-    "args": ["-a"],
-    "command": ["ls"]
-  })
 
   post_start {
     command = ["test"]
@@ -356,7 +399,24 @@ resource "huaweicloud_servicestagev3_component" "test" {
     port = 60
   }
 
-  timezone = "Asia/Shanghai"
+  storages {
+    type       = "HostPath"
+    name       = "%[2]s"
+    parameters = jsonencode({
+      "default_mode": 0,
+      "path": "/tmp"
+    })
+    mounts {
+      path      = "/category"
+      sub_path  = "sub"
+      read_only = true
+    }
+  }
+
+  command = jsonencode({
+    "args": ["-a"],
+    "command": ["ls"]
+  })
 
   logs {
     log_path         = "/tmp"
@@ -427,11 +487,25 @@ resource "huaweicloud_servicestagev3_component" "test" {
     port    = 8000
     path    = "/v1/test"
   }
+
+  update_strategy = jsonencode({
+    "type": "RollingUpdate",
+    "min_ready_seconds": 20,
+    "revision_history_limit": 15,
+    "progress_deadline_seconds": 900,
+    "termination_period_seconds": 30,
+    "max_unavailable": "30%%",
+    "max_surge": "30%%"
+  })
+
+  depends_on = [
+    huaweicloud_elb_certificate.test,
+    huaweicloud_servicestagev3_environment_associate.test,
+  ]
 }
 `, testAccV3Component_base(name),
 		name,
-		acceptance.HW_IMS_IMAGE_URL,
-		acceptance.HW_CCE_CLUSTER_ID,
+		acceptance.HW_SERVICESTAGE_JAR_PKG_STORAGE_URLS,
 		acceptance.HW_CSE_MICROSERVICE_ENGINE_ID)
 }
 
@@ -440,57 +514,91 @@ func testAccV3Component_basic_step2(name string) string {
 %[1]s
 
 resource "huaweicloud_servicestagev3_component" "test" {
-  depends_on = [
-    huaweicloud_servicestagev3_environment_associate.test
-  ]
-
   application_id = huaweicloud_servicestagev3_application.test.id
   environment_id = huaweicloud_servicestagev3_environment.test.id
   name           = "%[2]s"
+  version        = "1.0.2"
+  description    = "Updated by terraform script"
+  limit_cpu      = 0.25
+  limit_memory   = 0.5
+  request_cpu    = 0.25
+  request_memory = 0.5
+  replica        = 2
+  timezone       = "Asia/Shanghai"
 
-  runtime_stack {
-    deploy_mode = try(local.docker_runtime_stack.deploy_mode, null)
-    name        = try(local.docker_runtime_stack.name, null)
-    type        = try(local.docker_runtime_stack.type, null)
-    version     = try(local.docker_runtime_stack.version, null)
-  }
-
-  source = jsonencode({
-    "auth": "iam",
-    "kind": "image",
-    "storage": "swr",
-    "url": "%[3]s"
+  build = jsonencode({
+    "parameters": {
+      "environment_id": huaweicloud_servicestagev3_environment.test.id,
+      "cluster_namespace": "default",
+      "use_public_cluster": false,
+      "cluster_id": try(data.huaweicloud_cce_clusters.test.clusters[0].id, ""),
+      "dockerfile_path": "./",
+      "build_env_selected": "current"
+    }
   })
 
-  version = "1.0.2"
-  replica = 2
+  source = jsonencode({
+    "kind": "package",
+    "storage": "obs"
+    "url": try(element(split(",", "%[3]s"), 1), "")
+  })
+
+  runtime_stack {
+    deploy_mode = try(local.java_runtime_stack.deploy_mode, "container")
+    name        = try(local.java_runtime_stack.name, "OpenJDK17")
+    type        = try(local.java_runtime_stack.type, "Java")
+    version     = try(local.java_runtime_stack.version, null)
+  }
 
   refer_resources {
-    id         = "%[4]s"
+    id         = try(data.huaweicloud_cce_clusters.test.clusters[0].id, "")
     type       = "cce"
     parameters = jsonencode({
       "namespace": "default",
       "type": "VirtualMachine"
+      "name": try(data.huaweicloud_cce_clusters.test.clusters[0].name, "")
     })
   }
   refer_resources {
-    id   = "%[5]s"
+    id         = try(data.huaweicloud_elb_loadbalancers.test.loadbalancers[0].id, "")
+    type       = "elb"
+    parameters = jsonencode({
+      "name": try(data.huaweicloud_elb_loadbalancers.test.loadbalancers[0].name, "")
+    })
+  }
+  refer_resources {
+    id   = "%[4]s"
     type = "cse"
   }
 
   tags = {
-    foo = "baar"
+    foo     = "baar"
+    new_key = "value"
   }
 
-  description    = "Updated by terraform script"
-  limit_cpu      = 0.5
-  limit_memory   = 1
-  request_cpu    = 0.5
-  request_memory = 1
+  external_accesses {
+    protocol     = "HTTP"
+    forward_port = "8080"
+    address      = huaweicloud_elb_certificate.test.domain
+  }
 
   envs {
-    name  = "new_env_name"
-    value = "new_env_value"
+    name  = "MOCK_ENABLED"
+    value = "false"
+  }
+
+  post_start {
+    command = ["new test command"]
+    type    = "command"
+  }
+
+  pre_stop {
+    command = ["new test command"]
+    type    = "command"
+  }
+
+  mesher {
+    port = 100
   }
 
   storages {
@@ -511,22 +619,6 @@ resource "huaweicloud_servicestagev3_component" "test" {
     "args": ["-l"],
     "command": ["ls"]
   })
-
-  post_start {
-    command = ["newtest"]
-    type    = "command"
-  }
-
-  pre_stop {
-    command = ["newtest"]
-    type    = "command"
-  }
-
-  mesher {
-    port = 80
-  }
-
-  timezone = "Asia/HongKong"
 
   logs {
     log_path         = "/tmp/new"
@@ -597,10 +689,230 @@ resource "huaweicloud_servicestagev3_component" "test" {
     port    = 8080
     path    = "/v1/test/new"
   }
+
+  deploy_strategy {
+    type            = "RollingRelease"
+    rolling_release = jsonencode({
+      "batches": 1
+    })
+  }
+  update_strategy = jsonencode({
+    "max_surge": "30%%",
+    "max_unavailable": 2,
+    "progress_deadline_seconds": 900,
+    "revision_history_limit": 20,
+    "termination_period_seconds": 30,
+    "type": "RollingUpdate"
+  })
+
+  depends_on = [
+    huaweicloud_elb_certificate.test,
+    huaweicloud_servicestagev3_environment_associate.test,
+  ]
 }
 `, testAccV3Component_base(name),
 		name,
-		acceptance.HW_IMS_IMAGE_URL,
-		acceptance.HW_CCE_CLUSTER_ID,
+		acceptance.HW_SERVICESTAGE_JAR_PKG_STORAGE_URLS,
 		acceptance.HW_CSE_MICROSERVICE_ENGINE_ID)
+}
+
+func TestAccV3Component_yaml(t *testing.T) {
+	var (
+		component interface{}
+
+		resourceName = "huaweicloud_servicestagev3_component.test"
+		rc           = acceptance.InitResourceCheck(resourceName, &component, getV3ComponentFunc)
+
+		name = acceptance.RandomAccResourceNameWithDash()
+	)
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck: func() {
+			acceptance.TestAccPreCheck(t)
+			// Make sure at least one of node exist.
+			acceptance.TestAccPreCheckCceClusterId(t)
+			// At least one of JAR package must be provided.
+			acceptance.TestAccPreCheckServiceStageJarPkgStorageURLs(t, 1)
+		},
+		ProviderFactories: acceptance.TestAccProviderFactories,
+		CheckDestroy:      rc.CheckResourceDestroy(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccV3Component_yaml_step1(name),
+				Check: resource.ComposeTestCheckFunc(
+					rc.CheckResourceExists(),
+					resource.TestCheckResourceAttrPair(resourceName, "application_id", "huaweicloud_servicestagev3_application.test", "id"),
+					resource.TestCheckResourceAttrPair(resourceName, "environment_id", "huaweicloud_servicestagev3_environment.test", "id"),
+					resource.TestCheckResourceAttr(resourceName, "name", name),
+					resource.TestCheckResourceAttr(resourceName, "version", "1.0.1"),
+					resource.TestCheckResourceAttr(resourceName, "config_mode", "yaml"),
+					resource.TestCheckResourceAttr(resourceName, "description", "Created by terraform script"),
+					resource.TestCheckResourceAttr(resourceName, "limit_cpu", "0"),
+					resource.TestCheckResourceAttr(resourceName, "limit_memory", "0"),
+					resource.TestCheckResourceAttr(resourceName, "request_cpu", "0"),
+					resource.TestCheckResourceAttr(resourceName, "request_memory", "0"),
+					resource.TestCheckResourceAttr(resourceName, "replica", "2"),
+					resource.TestCheckResourceAttr(resourceName, "build", ""),
+					resource.TestCheckResourceAttrSet(resourceName, "source"),
+					resource.TestCheckResourceAttr(resourceName, "runtime_stack.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "runtime_stack.0.deploy_mode", "container"),
+					resource.TestCheckResourceAttr(resourceName, "runtime_stack.0.name", "Docker"),
+					resource.TestCheckResourceAttr(resourceName, "runtime_stack.0.type", "Docker"),
+					resource.TestCheckResourceAttr(resourceName, "runtime_stack.0.version", "1.0"),
+					resource.TestCheckResourceAttr(resourceName, "refer_resources.#", "1"),
+					resource.TestCheckResourceAttrSet(resourceName, "update_strategy"),
+					resource.TestCheckResourceAttrSet(resourceName, "status"),
+					resource.TestMatchResourceAttr(resourceName, "created_at",
+						regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}?(Z|([+-]\d{2}:\d{2}))$`)),
+				),
+			},
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: testAccV3ComponentImportStateIdFunc(resourceName),
+				ImportStateVerifyIgnore: []string{
+					"workload_content",
+					"tags",
+					"source_origin",
+					"build_origin",
+					"deploy_strategy.0.rolling_release_origin",
+					"command_origin",
+					"tomcat_opts_origin",
+					"update_strategy_origin",
+				},
+			},
+		},
+	})
+}
+
+func testAccV3Component_yaml_base(name string) string {
+	return fmt.Sprintf(`
+data "huaweicloud_availability_zones" "test" {}
+
+data "huaweicloud_cce_clusters" "test" {
+  cluster_id = "%[1]s"
+}
+
+data "huaweicloud_servicestagev3_runtime_stacks" "test" {}
+
+locals {
+  docker_runtime_stack = try([for o in data.huaweicloud_servicestagev3_runtime_stacks.test.runtime_stacks:
+    o if o.type == "Docker" && o.deploy_mode == "container"][0], {})
+}
+
+resource "huaweicloud_servicestagev3_application" "test" {
+  name                  = "%[2]s"
+  enterprise_project_id = "0"
+}
+
+resource "huaweicloud_servicestagev3_environment" "test" {
+  name                  = "%[2]s"
+  vpc_id                = try(data.huaweicloud_cce_clusters.test.clusters[0].vpc_id, "")
+  enterprise_project_id = "0"
+}
+
+resource "huaweicloud_servicestagev3_environment_associate" "test" {
+  environment_id = huaweicloud_servicestagev3_environment.test.id
+
+  resources {
+    id   = try(data.huaweicloud_cce_clusters.test.clusters[0].id, "")
+    type = "cce"
+  }
+}
+`, acceptance.HW_CCE_CLUSTER_ID, name)
+}
+
+func testAccV3Component_yaml_step1(name string) string {
+	return fmt.Sprintf(`
+%[1]s
+
+resource "huaweicloud_servicestagev3_component" "test" {
+  name           = "%[2]s"
+  description    = "Created by terraform script"
+  version        = "1.0.1"
+  environment_id = huaweicloud_servicestagev3_environment.test.id
+  application_id = huaweicloud_servicestagev3_application.test.id
+
+  runtime_stack {
+    deploy_mode = try(local.docker_runtime_stack.deploy_mode, "container")
+    name        = try(local.docker_runtime_stack.name, "Docker")
+    type        = try(local.docker_runtime_stack.type, "Docker")
+    version     = try(local.docker_runtime_stack.version, "1.0")
+  }
+
+  source = jsonencode({
+    kind    = "image"
+    storage = "swr"
+    url     = try(element(split(",", "%[3]s"), 0), "")
+  })
+
+  refer_resources {
+    type       = "cce"
+    id         = try(data.huaweicloud_cce_clusters.test.clusters[0].id, "")
+    parameters = jsonencode({
+      type      = "VirtualMachine"
+      namespace = "default"
+    })
+  }
+
+  config_mode      = "yaml"
+  workload_content = jsonencode({
+    apiVersion = "apps/v1"
+    kind       = "Deployment"
+    metadata   = {
+      name      = "%[2]s"
+      namespace = "default"
+    }
+    spec = {
+      selector = {}
+      template = {
+        metadata = {}
+        spec = {
+          imagePullSecrets = [
+            {
+              name = "default-secret",
+            }
+          ]
+          terminationGracePeriodSeconds = 30
+          volumes                       = []
+          restartPolicy                 = "Always"
+          dnsPolicy                     = "ClusterFirst"
+          containers                    = [
+            {
+              image           = try(element(split(",", "%[3]s"), 0), "")
+              name            = "%[2]s"
+              imagePullPolicy = "Always"
+              resources       = {
+                requests = {
+                  cpu    = "0"
+                  memory = "0"
+                }
+                limits = {
+                  cpu    = "0"
+                  memory = "0"
+                }
+              }
+              ports = [
+                {
+                  containerPort = 8080,
+                  protocol      = "TCP"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+    strategy = {
+      type = "RollingUpdate"
+      rollingUpdate = {
+        maxSurge       = 0
+        maxUnavailable = 1
+      }
+    }
+    replicas = 2
+  })
+}
+`, testAccV3Component_yaml_base(name), name, acceptance.HW_SERVICESTAGE_JAR_PKG_STORAGE_URLS)
 }

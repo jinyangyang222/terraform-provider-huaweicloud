@@ -4,18 +4,18 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 
 	"github.com/chnsz/golangsdk"
 	"github.com/chnsz/golangsdk/openstack/common/tags"
 	"github.com/chnsz/golangsdk/openstack/networking/v1/vpcs"
-
-	client "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/vpc/v3"
-	v3vpc "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/vpc/v3/model"
 
 	"github.com/huaweicloud/terraform-provider-huaweicloud/huaweicloud/common"
 	"github.com/huaweicloud/terraform-provider-huaweicloud/huaweicloud/config"
@@ -85,10 +85,25 @@ func ResourceVirtualPrivateCloudV1() *schema.Resource {
 					ValidateFunc: utils.ValidateCIDR,
 				},
 			},
+			"enhanced_local_route": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"true", "false",
+				}, false),
+			},
 			"enterprise_project_id": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
+			},
+			"block_service_endpoint_states": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Description: utils.SchemaDesc("", utils.SchemaDescInput{
+					Internal: true,
+				}),
 			},
 			"status": {
 				Type:     schema.TypeString,
@@ -125,9 +140,14 @@ func resourceVirtualPrivateCloudCreate(ctx context.Context, d *schema.ResourceDa
 	}
 
 	createOpts := vpcs.CreateOpts{
-		Name:        d.Get("name").(string),
-		CIDR:        d.Get("cidr").(string),
-		Description: d.Get("description").(string),
+		Name:                       d.Get("name").(string),
+		CIDR:                       d.Get("cidr").(string),
+		Description:                d.Get("description").(string),
+		BlockServiceEndpointStates: d.Get("block_service_endpoint_states").(string),
+	}
+	if v, ok := d.GetOk("enhanced_local_route"); ok {
+		enhancedLocalRoute, _ := strconv.ParseBool(v.(string))
+		createOpts.EnhancedLocalRoute = &enhancedLocalRoute
 	}
 
 	epsID := cfg.GetEnterpriseProjectID(d)
@@ -181,7 +201,7 @@ func resourceVirtualPrivateCloudCreate(ctx context.Context, d *schema.ResourceDa
 	}
 
 	if len(extendCidrs) > 0 {
-		v3Client, err := cfg.HcVpcV3Client(region)
+		v3Client, err := cfg.NewServiceClient("vpcv3", region)
 		if err != nil {
 			return diag.Errorf("error creating VPC v3 client: %s", err)
 		}
@@ -205,9 +225,9 @@ func GetVpcById(conf *config.Config, region, vpcId string) (*vpcs.Vpc, error) {
 }
 
 func resourceVirtualPrivateCloudRead(_ context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	conf := meta.(*config.Config)
-	region := conf.GetRegion(d)
-	n, err := GetVpcById(conf, region, d.Id())
+	cfg := meta.(*config.Config)
+	region := cfg.GetRegion(d)
+	n, err := GetVpcById(cfg, region, d.Id())
 	if err != nil {
 		return common.CheckDeletedDiag(d, err, "error obtain VPC information")
 	}
@@ -215,6 +235,7 @@ func resourceVirtualPrivateCloudRead(_ context.Context, d *schema.ResourceData, 
 	d.Set("name", n.Name)
 	d.Set("cidr", n.CIDR)
 	d.Set("description", n.Description)
+	d.Set("enhanced_local_route", strconv.FormatBool(n.EnhancedLocalRoute))
 	d.Set("enterprise_project_id", n.EnterpriseProjectID)
 	d.Set("status", n.Status)
 	d.Set("region", region)
@@ -231,7 +252,7 @@ func resourceVirtualPrivateCloudRead(_ context.Context, d *schema.ResourceData, 
 	d.Set("routes", routes)
 
 	// save VirtualPrivateCloudV2 tags
-	v2Client, err := conf.NetworkingV2Client(region)
+	v2Client, err := cfg.NetworkingV2Client(region)
 	if err != nil {
 		return diag.Errorf("error creating VPC client: %s", err)
 	}
@@ -245,7 +266,7 @@ func resourceVirtualPrivateCloudRead(_ context.Context, d *schema.ResourceData, 
 	}
 
 	// save VirtualPrivateCloudV3 extend_cidrs
-	v3Client, err := conf.HcVpcV3Client(region)
+	v3Client, err := cfg.NewServiceClient("vpcv3", region)
 	if err != nil {
 		return diag.Errorf("error creating VPC v3 client: %s", err)
 	}
@@ -256,14 +277,14 @@ func resourceVirtualPrivateCloudRead(_ context.Context, d *schema.ResourceData, 
 	}
 
 	if val, ok := d.GetOk("secondary_cidr"); ok {
-		for _, extendCidr := range res.Vpc.ExtendCidrs {
+		for _, extendCidr := range utils.PathSearch("vpc.extend_cidrs", res, []interface{}{}).([]interface{}) {
 			if extendCidr == val {
 				d.Set("secondary_cidr", extendCidr)
 				break
 			}
 		}
 	}
-	d.Set("secondary_cidrs", res.Vpc.ExtendCidrs)
+	d.Set("secondary_cidrs", utils.PathSearch("vpc.extend_cidrs", res, nil))
 
 	return nil
 }
@@ -275,13 +296,13 @@ func resourceVirtualPrivateCloudUpdate(ctx context.Context, d *schema.ResourceDa
 	if err != nil {
 		return diag.Errorf("error creating VPC client: %s", err)
 	}
-	v3Client, err := cfg.HcVpcV3Client(region)
+	v3Client, err := cfg.NewServiceClient("vpcv3", region)
 	if err != nil {
 		return diag.Errorf("error creating VPC v3 client: %s", err)
 	}
 
 	vpcID := d.Id()
-	if d.HasChanges("name", "cidr", "description") {
+	if d.HasChanges("name", "cidr", "description", "enhanced_local_route") {
 		updateOpts := vpcs.UpdateOpts{
 			Name: d.Get("name").(string),
 			CIDR: d.Get("cidr").(string),
@@ -289,6 +310,10 @@ func resourceVirtualPrivateCloudUpdate(ctx context.Context, d *schema.ResourceDa
 		if d.HasChange("description") {
 			desc := d.Get("description").(string)
 			updateOpts.Description = &desc
+		}
+		if d.HasChange("enhanced_local_route") {
+			enhancedLocalRoute, _ := strconv.ParseBool(d.Get("enhanced_local_route").(string))
+			updateOpts.EnhancedLocalRoute = &enhancedLocalRoute
 		}
 
 		_, err = vpcs.Update(v1Client, vpcID, updateOpts).Extract()
@@ -433,46 +458,64 @@ func waitForVpcDelete(vpcClient *golangsdk.ServiceClient, vpcId string) resource
 	}
 }
 
-func addSecondaryCIDR(v3Client *client.VpcClient, vpcID string, cidrs []string) error {
-	reqBody := v3vpc.AddVpcExtendCidrRequestBody{
-		Vpc: &v3vpc.AddExtendCidrOption{
-			ExtendCidrs: cidrs,
+func buildSecondaryCIDRBodyParams(cidrs []string) map[string]interface{} {
+	return map[string]interface{}{
+		"vpc": map[string]interface{}{
+			"extend_cidrs": cidrs,
 		},
 	}
-	reqOpts := v3vpc.AddVpcExtendCidrRequest{
-		VpcId: vpcID,
-		Body:  &reqBody,
+}
+
+func addSecondaryCIDR(client *golangsdk.ServiceClient, vpcID string, cidrs []string) error {
+	addSecondaryCIDRHttpUrl := "v3/{project_id}/vpc/vpcs/{vpc_id}/add-extend-cidr"
+	addSecondaryCIDRPath := client.Endpoint + addSecondaryCIDRHttpUrl
+	addSecondaryCIDRPath = strings.ReplaceAll(addSecondaryCIDRPath, "{project_id}", client.ProjectID)
+	addSecondaryCIDRPath = strings.ReplaceAll(addSecondaryCIDRPath, "{vpc_id}", vpcID)
+
+	addSecondaryCIDROpt := golangsdk.RequestOpts{
+		KeepResponseBody: true,
 	}
+	addSecondaryCIDROpt.JSONBody = utils.RemoveNil(buildSecondaryCIDRBodyParams(cidrs))
 
 	log.Printf("[DEBUG] add secondary CIDRs %s into VPC %s", cidrs, vpcID)
-	_, err := v3Client.AddVpcExtendCidr(&reqOpts)
+	_, err := client.Request("PUT", addSecondaryCIDRPath, &addSecondaryCIDROpt)
 	return err
 }
 
-func removeSecondaryCIDR(v3Client *client.VpcClient, vpcID string, preCidrs []string) error {
-	reqBody := v3vpc.RemoveVpcExtendCidrRequestBody{
-		Vpc: &v3vpc.RemoveExtendCidrOption{
-			ExtendCidrs: preCidrs,
-		},
+func removeSecondaryCIDR(client *golangsdk.ServiceClient, vpcID string, preCidrs []string) error {
+	removeSecondaryCIDRHttpUrl := "v3/{project_id}/vpc/vpcs/{vpc_id}/remove-extend-cidr"
+	removeSecondaryCIDRPath := client.Endpoint + removeSecondaryCIDRHttpUrl
+	removeSecondaryCIDRPath = strings.ReplaceAll(removeSecondaryCIDRPath, "{project_id}", client.ProjectID)
+	removeSecondaryCIDRPath = strings.ReplaceAll(removeSecondaryCIDRPath, "{vpc_id}", vpcID)
+
+	removeSecondaryCIDROpt := golangsdk.RequestOpts{
+		KeepResponseBody: true,
 	}
-	reqOpts := v3vpc.RemoveVpcExtendCidrRequest{
-		VpcId: vpcID,
-		Body:  &reqBody,
-	}
+
+	removeSecondaryCIDROpt.JSONBody = utils.RemoveNil(buildSecondaryCIDRBodyParams(preCidrs))
 
 	log.Printf("[DEBUG] remove secondary CIDRs %s from VPC %s", preCidrs, vpcID)
-	_, err := v3Client.RemoveVpcExtendCidr(&reqOpts)
+	_, err := client.Request("PUT", removeSecondaryCIDRPath, &removeSecondaryCIDROpt)
 	return err
 }
 
-func obtainV3VpcResp(v3Client *client.VpcClient, vpcID string) (*v3vpc.ShowVpcResponse, error) {
-	reqOpts := v3vpc.ShowVpcRequest{
-		VpcId: vpcID,
+func obtainV3VpcResp(client *golangsdk.ServiceClient, vpcID string) (interface{}, error) {
+	getVPCPHttpUrl := "v3/{project_id}/vpc/vpcs/{vpc_id}"
+	getVPCPath := client.Endpoint + getVPCPHttpUrl
+	getVPCPath = strings.ReplaceAll(getVPCPath, "{project_id}", client.ProjectID)
+	getVPCPath = strings.ReplaceAll(getVPCPath, "{vpc_id}", vpcID)
+	getVPCOpt := golangsdk.RequestOpts{
+		KeepResponseBody: true,
 	}
-	res, err := v3Client.ShowVpc(&reqOpts)
+	getVPCResp, err := client.Request("GET", getVPCPath, &getVPCOpt)
 	if err != nil {
 		return nil, err
 	}
 
-	return res, nil
+	resp, err := utils.FlattenResponse(getVPCResp)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
 }

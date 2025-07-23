@@ -129,6 +129,75 @@ resource "huaweicloud_cfw_acl_rule" "test" {
 }
 ```
 
+### Create a rule with any service
+
+```hcl
+variable "name" {}
+variable "description" {}
+variable "object_id" {}
+variable "service_group_id" {}
+variable "protocol" {}
+
+resource "huaweicloud_cfw_acl_rule" "test" {
+  name                = var.name
+  object_id           = var.object_id
+  description         = var.description
+  type                = 0
+  address_type        = 0
+  action_type         = 0
+  long_connect_enable = 0
+  status              = 1
+
+  source_addresses      = ["1.1.1.1"] 
+  destination_addresses = ["1.1.1.2"]
+
+  sequence {
+    top = 1
+  }
+
+  tags = {
+    key = "value"
+  }
+}
+```
+
+### Create a rule with any source address
+
+```hcl
+variable "name" {}
+variable "description" {}
+variable "object_id" {}
+variable "service_group_id" {}
+variable "protocol" {}
+
+resource "huaweicloud_cfw_acl_rule" "test" {
+  name                = var.name
+  object_id           = var.object_id
+  description         = var.description
+  type                = 0
+  address_type        = 0
+  action_type         = 0
+  long_connect_enable = 0
+  status              = 1
+
+  destination_addresses = ["1.1.1.2"]
+
+  custom_services {
+    protocol    = 6
+    source_port = 81
+    dest_port   = 82
+  }
+  
+  sequence {
+    top = 1
+  }
+
+  tags = {
+    key = "value"
+  }
+}
+```
+
 ## Argument Reference
 
 The following arguments are supported:
@@ -149,6 +218,10 @@ The following arguments are supported:
 
 * `address_type` - (Required, Int) The address type.
   The value can be `0` (IPv4), `1` (IPv6).
+
+* `applications` - (Optional, List) The application list.
+  The valid value can be **HTTP**, **HTTPS**, **TLS1**, **DNS**, **SSH**, **MYSQL**, **SMTP**, **RDP**, **RDPS**,
+  **VNC**, **POP3**, **IMAP4**, **SMTPS**, **POP3S**, **FTPS**, **ANY**, **BGP** and so on.
 
 * `sequence` - (Required, List) The sequence configuration.
   The [sequence](#Sequence) structure is documented below.
@@ -193,8 +266,8 @@ The following arguments are supported:
 
 * `destination_domain_group_type` - (Optional, Int) The destination domain group type.
   The options are as follows:
-  + **4**: domain name group using URL filtering;
-  + **6**: domain name group using DNS resolution;
+  + **4**: application domain name group;
+  + **6**: network domain name group;
 
 * `destination_address_groups` - (Optional, List) The destination address group list.
 

@@ -5,10 +5,20 @@
         "huaweicloud_cae_component": {
           "block": {
             "attributes": {
+              "action": {
+                "type": "string",
+                "description": "The operation type of the component.",
+                "optional": true
+              },
               "application_id": {
                 "type": "string",
                 "required": true,
                 "forcenew": true
+              },
+              "available_replica": {
+                "type": "number",
+                "description": "The number of available instances under the component.",
+                "computed": true
               },
               "created_at": {
                 "type": "string",
@@ -27,12 +37,35 @@
                 "type": "string",
                 "computed": true
               },
+              "status": {
+                "type": "string",
+                "description": "The current status of the component.",
+                "computed": true
+              },
               "updated_at": {
                 "type": "string",
                 "computed": true
               }
             },
             "block_types": {
+              "configurations": {
+                "block": {
+                  "attributes": {
+                    "data": {
+                      "type": "string",
+                      "description": "The component configuration detail, in JSON format.",
+                      "required": true
+                    },
+                    "type": {
+                      "type": "string",
+                      "description": "The type of the component configuration.",
+                      "required": true
+                    }
+                  },
+                  "description": "The list of configurations of the component."
+                },
+                "nesting_mode": "set"
+              },
               "metadata": {
                 "block": {
                   "attributes": {

@@ -13,8 +13,8 @@ import (
 
 	"github.com/chnsz/golangsdk"
 	"github.com/chnsz/golangsdk/auth"
+	"github.com/chnsz/golangsdk/auth/core/signer"
 	huaweisdk "github.com/chnsz/golangsdk/openstack"
-
 	iam_model "github.com/huaweicloud/huaweicloud-sdk-go-v3/services/iam/v3/model"
 
 	"github.com/huaweicloud/terraform-provider-huaweicloud/huaweicloud/helper/pathorcontents"
@@ -138,10 +138,20 @@ func genClient(c *Config, ao golangsdk.AuthOptionsProvider) (*golangsdk.Provider
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			if client.AKSKAuthOptions.AccessKey != "" {
-				err := auth.Sign(req, client.AKSKAuthOptions.AccessKey, client.AKSKAuthOptions.SecretKey)
+				if c.SigningAlgorithm == "" || c.SigningAlgorithm == signer.HmacSHA256 {
+					return auth.Sign(req, client.AKSKAuthOptions.AccessKey, client.AKSKAuthOptions.SecretKey)
+				}
+
+				sn, err := signer.GetSigner(signer.SigningAlgorithm(c.SigningAlgorithm))
 				if err != nil {
 					return err
 				}
+
+				_, err = sn.Sign(req, client.AKSKAuthOptions.AccessKey, client.AKSKAuthOptions.SecretKey)
+				if err != nil {
+					return err
+				}
+				return nil
 			}
 			return nil
 		},
@@ -221,6 +231,7 @@ func buildClientByAKSK(c *Config) error {
 			AgencyName:       c.AgencyName,
 			AgencyDomainName: c.AgencyDomainName,
 			DelegatedProject: c.DelegatedProject,
+			SigningAlgorithm: c.SigningAlgorithm,
 		}
 
 		domainAuthOptions = golangsdk.AKSKAuthOptions{
@@ -228,16 +239,19 @@ func buildClientByAKSK(c *Config) error {
 			Domain:           c.DomainName,
 			AgencyName:       c.AgencyName,
 			AgencyDomainName: c.AgencyDomainName,
+			SigningAlgorithm: c.SigningAlgorithm,
 		}
 	} else {
 		projectAuthOptions = golangsdk.AKSKAuthOptions{
-			ProjectName: c.TenantName,
-			ProjectId:   c.TenantID,
+			ProjectName:      c.TenantName,
+			ProjectId:        c.TenantID,
+			SigningAlgorithm: c.SigningAlgorithm,
 		}
 
 		domainAuthOptions = golangsdk.AKSKAuthOptions{
-			DomainID: c.DomainID,
-			Domain:   c.DomainName,
+			DomainID:         c.DomainID,
+			Domain:           c.DomainName,
+			SigningAlgorithm: c.SigningAlgorithm,
 		}
 	}
 
@@ -344,9 +358,11 @@ func buildClientByAgencyV5(c *Config) error {
 	createAssumePath := client.Endpoint + createAssumeHttpUrl
 	agencyUrn := "iam::" + c.AssumeRoleDomainID + ":agency:" + c.AssumeRoleAgency
 	createAssumeOpts := map[string]interface{}{
-		"duration_seconds":    assumeRoleDuration,
 		"agency_urn":          agencyUrn,
 		"agency_session_name": c.AssumeRoleAgency,
+	}
+	if c.AssumeRoleDuration != 0 {
+		createAssumeOpts["duration_seconds"] = c.AssumeRoleDuration
 	}
 	createAssumeOpt := golangsdk.RequestOpts{
 		KeepResponseBody: true,

@@ -12,7 +12,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/customdiff"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/validation"
 
 	"github.com/chnsz/golangsdk"
 	"github.com/chnsz/golangsdk/openstack/common/tags"
@@ -238,17 +237,11 @@ func ResourceLoadBalancerV3() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
-				ValidateFunc: validation.StringInSlice([]string{
-					"prePaid", "postPaid",
-				}, false),
 			},
 			"period_unit": {
 				Type:         schema.TypeString,
 				Optional:     true,
 				RequiredWith: []string{"period"},
-				ValidateFunc: validation.StringInSlice([]string{
-					"month", "year",
-				}, false),
 			},
 			"period": {
 				Type:         schema.TypeInt,
@@ -300,6 +293,22 @@ func ResourceLoadBalancerV3() *schema.Resource {
 				Computed: true,
 			},
 			"ipv6_eip_id": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"elb_virsubnet_type": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"frozen_scene": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"operating_status": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"public_border_group": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
@@ -506,6 +515,10 @@ func resourceLoadBalancerV3Read(_ context.Context, d *schema.ResourceData, meta 
 		d.Set("protection_status", lb.ProtectionStatus),
 		d.Set("protection_reason", lb.ProtectionReason),
 		d.Set("charge_mode", lb.ChargeMode),
+		d.Set("elb_virsubnet_type", lb.ElbVirsubnetType),
+		d.Set("frozen_scene", lb.FrozenScene),
+		d.Set("operating_status", lb.OperatingStatus),
+		d.Set("public_border_group", lb.PublicBorderGroup),
 		d.Set("guaranteed", lb.Guaranteed),
 		d.Set("created_at", lb.CreatedAt),
 		d.Set("updated_at", lb.UpdatedAt),

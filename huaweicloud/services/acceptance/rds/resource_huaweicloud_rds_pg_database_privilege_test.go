@@ -36,36 +36,31 @@ resource "huaweicloud_rds_instance" "test" {
   description       = "test_description"
   flavor            = "rds.pg.n1.large.2"
   availability_zone = [data.huaweicloud_availability_zones.test.names[0]]
-  security_group_id = huaweicloud_networking_secgroup.test.id
+  security_group_id = data.huaweicloud_networking_secgroup.test.id
   subnet_id         = data.huaweicloud_vpc_subnet.test.id
   vpc_id            = data.huaweicloud_vpc.test.id
   time_zone         = "UTC+08:00"
 
   db {
     type    = "PostgreSQL"
-    version = "12"
+    version = "16"
   }
 
   volume {
     type = "CLOUDSSD"
-    size = 50
+    size = 40
   }
 }
 
 resource "huaweicloud_rds_pg_account" "test" {
-  count = 2
+  count = 4
 
   instance_id = huaweicloud_rds_instance.test.id
   name        = "%[2]s_${count.index}"
-  password    = "Test@123456789"
+  password    = "Terraform145@"
 }
 
 resource "huaweicloud_rds_pg_database" "test" {
-  depends_on = [
-    huaweicloud_rds_pg_account.test[0],
-    huaweicloud_rds_pg_account.test[1],
-  ]
-
   instance_id   = huaweicloud_rds_instance.test.id
   name          = "%[2]s"
   owner         = "root"
@@ -74,7 +69,7 @@ resource "huaweicloud_rds_pg_database" "test" {
   lc_collate    = "en_US.UTF-8"
   lc_ctype      = "en_US.UTF-8"
 }
-`, testAccRdsInstance_base(name), name)
+`, testAccRdsInstance_base(), name)
 }
 
 func testAccRdsPgDatabasePrivilege_basic(name string) string {
@@ -120,12 +115,12 @@ resource "huaweicloud_rds_pg_database_privilege" "test" {
   db_name     = huaweicloud_rds_pg_database.test.name
 
   users {
-    name        = huaweicloud_rds_pg_account.test[0].name
+    name        = huaweicloud_rds_pg_account.test[2].name
     readonly    = false
     schema_name = "public"
   }
   users {
-    name        = huaweicloud_rds_pg_account.test[1].name
+    name        = huaweicloud_rds_pg_account.test[3].name
     readonly    = true
     schema_name = "public"
   }

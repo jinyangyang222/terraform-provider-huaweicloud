@@ -5,6 +5,9 @@ configured with the proper credentials before it can be used.
 
 Use the navigation to the left to read about the available resources.
 
+-> **NOTE:** You can also use this provider to interact with resources supported by HCSO if the API is compatible
+with HuaweiCloud.
+
 ## Example Usage
 
 Terraform 0.13 and later:
@@ -82,10 +85,25 @@ provider "huaweicloud" {
 }
 ```
 
+Temporary security credentials can be provided by adding an `security_token` with `access_key` and `secret_key`
+in-line in the provider block:
+
+Usage:
+
+```hcl
+provider "huaweicloud" {
+  region         = "cn-north-4"
+  access_key     = "my-access-key"
+  secret_key     = "my-secret-key"
+  security_token = "my-security-token"
+}
+```
+
 ### Environment variables
 
 You can provide your credentials via the `HW_ACCESS_KEY` and
 `HW_SECRET_KEY` environment variables, representing your Huawei Cloud Access Key and Secret Key, respectively.
+For temporary security credentials, need to add one more environment variable `HW_SECURITY_TOKEN`.
 
 ```hcl
 provider "huaweicloud" {}
@@ -108,7 +126,7 @@ to specify your credentials. You need to specify a location in the Terraform con
 `shared_config_file` argument or using the `HW_SHARED_CONFIG_FILE` environment variable.
 This method also supports a `profile` configuration and matching `HW_PROFILE` environment variable:
 
-!> **NOTE:** The CLI configuration file can not be used directly by terraform, you need to skip encrypting
+-> **NOTE:** The CLI configuration file can not be used directly by terraform, you need to skip encrypting
 authentication information in the configuration file by running the following command:
 
 ```sh
@@ -211,7 +229,15 @@ The following arguments are supported:
   at [EPS](https://registry.terraform.io/providers/huaweicloud/huaweicloud/latest/docs/data-sources/enterprise_project).
   If omitted, the `HW_ENTERPRISE_PROJECT_ID` environment variable is used.
 
+* `signing_algorithm` - (Optional) The signing algorithm for authentication. Valid values are **HmacSHA256**,
+  **HmacSM3**, **EcdsaP256SHA256**, **SM2SM3**.
+  If omitted, the `HW_SIGNING_ALGORITHM` environment variable is used.
+
 * `regional` - (Optional) Whether the service endpoints are regional. The default value is `false`.
+
+* `skip_check_website_type` - (Optional) Whether to skip website type check. The default value is `false`.
+
+* `skip_check_upgrade` - (Optional) Whether to skip upgrade check. The default value is `false`.
 
 * `endpoints` - (Optional) Configuration block in key/value pairs for customizing service endpoints. The following
   endpoints support to be customized: autoscaling, ecs, ims, vpc, nat, evs, obs, sfs, cce, rds, dds, iam. An example

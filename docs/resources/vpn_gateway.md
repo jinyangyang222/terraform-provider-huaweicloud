@@ -245,6 +245,14 @@ The following arguments are supported:
 
 * `enterprise_project_id` - (Optional, String) The enterprise project ID.
 
+* `certificate` - (Optional, List) The GM certificate of the **GM** flavor gateway.
+  The [object](#Gateway_certificate) structure is documented below.
+
+* `tags` - (Optional, Map) Specifies the tags of the VPN gateway.
+
+* `delete_eip_on_termination` - (Optional, Bool) Whether to delete the EIP when the VPN gateway is deleted.
+  Defaults to **true**.
+
 <a name="Gateway_CreateRequestEip"></a>
 The `eip1` or `eip2` block supports:
 
@@ -274,12 +282,7 @@ The `eip1` or `eip2` block supports:
   ~> You can use `id` to specify an existing EIP or use `type`, `bandwidth_name`, `bandwidth_size` and `charge_mode` to
     create a new EIP.
 
-* `certificate` - (Optional, List) The GM certificate of the **GM** flavor gateway.
-  The [object](#Gateway_certificate_attr) structure is documented below.
-
-* `tags` - (Optional, Map) Specifies the tags of the VPN gateway.
-
-<a name="Gateway_certificate_attr"></a>
+<a name="Gateway_certificate"></a>
 The `certificate` block supports:
 
 * `name` - (Required, String) The name of the gateway certificate.
@@ -318,6 +321,9 @@ In addition to all arguments above, the following attributes are exported:
 * `eip2` - The master 2 IP in active-active VPN gateway or the slave IP in active-standby VPN gateway.
   The [object](#Gateway_GetResponseEip) structure is documented below.
 
+* `certificate` - The GM certificate of the **GM** flavor gateway.
+  The [object](#Gateway_certificate_attr) structure is documented below.
+
 <a name="Gateway_GetResponseEip"></a>
 The `eip1` or `eip2` block supports:
 
@@ -326,9 +332,6 @@ The `eip1` or `eip2` block supports:
 * `ip_address` - The public IP address.
 
 * `ip_version` - The public IP version.
-
-* `certificate` - The GM certificate of the **GM** flavor gateway.
-  The [object](#Gateway_certificate_attr) structure is documented below.
 
 <a name="Gateway_certificate_attr"></a>
 The `certificate` block supports:
@@ -377,4 +380,22 @@ The gateway can be imported using the `id`, e.g.
 
 ```bash
 $ terraform import huaweicloud_vpn_gateway.test <id>
+```
+
+Note that the imported state may not be identical to your resource definition, due to some attributes missing from the
+API response, security or some other reason. The missing attribute is `delete_eip_on_termination`. It is generally
+recommended running `terraform plan` after importing the resource. You can then decide if changes should be applied
+to the gateway, or the resource definition should be updated to align with the gateway.
+Also you can ignore changes as below.
+
+```hcl
+resource "huaweicloud_vpn_gateway" "test" {
+    ...
+
+  lifecycle {
+    ignore_changes = [
+      delete_eip_on_termination
+    ]
+  }
+}
 ```

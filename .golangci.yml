@@ -39,6 +39,9 @@ linters-settings:
     # SAxxxx checks in https://staticcheck.io/docs/configuration/options/#checks
     # Default: ["*"]
     checks: ["all"]
+  gocritic:
+    disabled-checks:
+      - unnamedResult
   gosimple:
     # Sxxxx checks in https://staticcheck.io/docs/configuration/options/#checks
     # Default: ["*"]
@@ -66,6 +69,7 @@ linters-settings:
       - criterias
       - analyses
       - versoin
+      - cancelling
   gci:
     # Section configuration to compare against.
     # Section names are case-insensitive and may contain parameters in ().

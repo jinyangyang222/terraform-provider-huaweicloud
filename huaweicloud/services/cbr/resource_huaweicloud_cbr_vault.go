@@ -2,6 +2,7 @@ package cbr
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"strconv"
@@ -91,22 +92,34 @@ func ResourceVault() *schema.Resource {
 				ForceNew:    true,
 				Description: "The region where the vault is located.",
 			},
-			"name": {
-				Type:        schema.TypeString,
-				Required:    true,
-				Description: "The vault name.",
+			"cloud_type": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				ForceNew: true,
+				Description: utils.SchemaDesc(
+					"The cloud type of the vault.",
+					utils.SchemaDescInput{
+						Required: true,
+					},
+				),
 			},
 			"type": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The vault type.",
+				Description: "The type of the vault.",
+			},
+			"name": {
+				Type:        schema.TypeString,
+				Required:    true,
+				Description: "The name of the vault.",
 			},
 			"protection_type": {
 				Type:        schema.TypeString,
 				Required:    true,
 				ForceNew:    true,
-				Description: "The protection type.",
+				Description: "The protection type of the vault.",
 			},
 			"size": {
 				Type:        schema.TypeInt,
@@ -124,6 +137,12 @@ func ResourceVault() *schema.Resource {
 				Optional:    true,
 				Computed:    true,
 				Description: "Whether to enable auto capacity expansion for the vault.",
+			},
+			"locked": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				Computed:    true,
+				Description: "Locked status of the vault.",
 			},
 			"auto_bind": {
 				Type:        schema.TypeBool,
@@ -255,7 +274,7 @@ func buildAssociateResourcesForServer(rType string, resources []interface{}) ([]
 
 	for _, val := range resources {
 		if utils.PathSearch("includes", val, schema.NewSet(schema.HashString, nil)).(*schema.Set).Len() > 0 {
-			return results, fmt.Errorf("server type vaults does not support 'includes'")
+			return results, errors.New("server type vaults does not support 'includes'")
 		}
 
 		result := map[string]interface{}{
@@ -275,18 +294,18 @@ func buildAssociateResourcesForServer(rType string, resources []interface{}) ([]
 
 func buildAssociateResourcesForDisk(rType string, resources []interface{}) ([]map[string]interface{}, error) {
 	if len(resources) > 1 {
-		return nil, fmt.Errorf("the size of resources cannot grant than one for disk and turbo vault")
+		return nil, errors.New("the size of resources cannot grant than one for disk and turbo vault")
 	} else if len(resources) == 0 {
 		// If no resource is set, send an empty slice to the CBR service.
 		return make([]map[string]interface{}, 0), nil
 	}
 
 	if utils.PathSearch("excludes", resources[0], schema.NewSet(schema.HashString, nil)).(*schema.Set).Len() > 0 {
-		return nil, fmt.Errorf("disk-type and turbo-type vaults does not support 'excludes'")
+		return nil, errors.New("disk-type and turbo-type vaults does not support 'excludes'")
 	}
 	includes := utils.PathSearch("includes", resources[0], schema.NewSet(schema.HashString, nil)).(*schema.Set)
 	if includes.Len() < 1 {
-		return nil, fmt.Errorf("includes must be set for disk type and turbo type vault")
+		return nil, errors.New("includes must be set for disk type and turbo type vault")
 	}
 	results := make([]map[string]interface{}, 0, includes.Len())
 	for _, v := range includes.List() {
@@ -325,6 +344,7 @@ func isPrePaid(d *schema.ResourceData) bool {
 
 func buildBillingStructure(d *schema.ResourceData) map[string]interface{} {
 	billing := map[string]interface{}{
+		"cloud_type":       utils.ValueIgnoreEmpty(d.Get("cloud_type").(string)),
 		"object_type":      d.Get("type").(string),
 		"consistent_level": d.Get("consistent_level").(string),
 		"protect_type":     d.Get("protection_type").(string),
@@ -340,7 +360,7 @@ func buildBillingStructure(d *schema.ResourceData) map[string]interface{} {
 		billing["is_auto_pay"], _ = strconv.ParseBool(common.GetAutoPay(d))
 	}
 
-	return billing
+	return utils.RemoveNil(billing)
 }
 
 func buildBindRules(rules map[string]interface{}) []map[string]interface{} {
@@ -371,18 +391,20 @@ func buildVaultCreateOpts(cfg *config.Config, d *schema.ResourceData) (map[strin
 
 	isAutoExpand, ok := d.GetOk("auto_expand")
 	if ok && isPrePaid(d) {
-		return nil, fmt.Errorf("the prepaid vault do not support the parameter 'auto_expand'")
+		return nil, errors.New("the prepaid vault do not support the parameter 'auto_expand'")
 	}
 
 	result := map[string]interface{}{
 		"name":                  d.Get("name").(string),
 		"enterprise_project_id": utils.ValueIgnoreEmpty(cfg.GetEnterpriseProjectID(d)),
-		"resources":             resources,
-		"backup_policy_id":      utils.ValueIgnoreEmpty(d.Get("policy_id")), // The deprecated parameter (can only bind backup policy).
-		"billing":               buildBillingStructure(d),
-		"auto_expand":           isAutoExpand.(bool),
-		"auto_bind":             d.Get("auto_bind").(bool),
-		"backup_name_prefix":    utils.ValueIgnoreEmpty(d.Get("backup_name_prefix")),
+		// If no resources are bound when creating, enter an empty list.
+		"resources":          resources,
+		"backup_policy_id":   utils.ValueIgnoreEmpty(d.Get("policy_id")), // The deprecated parameter (can only bind backup policy).
+		"billing":            buildBillingStructure(d),
+		"auto_expand":        isAutoExpand.(bool),
+		"auto_bind":          d.Get("auto_bind").(bool),
+		"backup_name_prefix": utils.ValueIgnoreEmpty(d.Get("backup_name_prefix")),
+		"locked":             d.Get("locked").(bool),
 	}
 
 	bindRulesRaw, ok := d.Get("bind_rules").(map[string]interface{})
@@ -612,8 +634,9 @@ func resourceVaultRead(_ context.Context, d *schema.ResourceData, meta interface
 	mErr := multierror.Append(
 		// Required && Optional
 		d.Set("region", region),
-		d.Set("name", utils.PathSearch("name", respBody, nil)),
+		d.Set("cloud_type", utils.PathSearch("billing.cloud_type", respBody, nil)),
 		d.Set("type", objectType),
+		d.Set("name", utils.PathSearch("name", respBody, nil)),
 		d.Set("protection_type", utils.PathSearch("billing.protect_type", respBody, nil)),
 		d.Set("size", utils.PathSearch("billing.size", respBody, nil)),
 		d.Set("consistent_level", utils.PathSearch("billing.consistent_level", respBody, nil)),
@@ -621,6 +644,7 @@ func resourceVaultRead(_ context.Context, d *schema.ResourceData, meta interface
 		d.Set("auto_bind", utils.PathSearch("auto_bind", respBody, nil)),
 		d.Set("enterprise_project_id", utils.PathSearch("enterprise_project_id", respBody, nil)),
 		d.Set("backup_name_prefix", utils.PathSearch("backup_name_prefix", respBody, nil)),
+		d.Set("locked", utils.PathSearch("locked", respBody, nil)),
 		d.Set("is_multi_az", utils.PathSearch("billing.is_multi_az", respBody, nil)),
 		d.Set("tags", utils.FlattenTagsToMap(utils.PathSearch("tags", respBody, nil))),
 		d.Set("bind_rules", utils.FlattenTagsToMap(utils.PathSearch("bind_rules.tags", respBody, nil))),
@@ -870,11 +894,15 @@ func updateBasicParameters(client *golangsdk.ServiceClient, d *schema.ResourceDa
 
 	if d.HasChanges("size", "auto_expand", "auto_bind") {
 		if isPrePaid(d) {
-			return fmt.Errorf("cannot update 'size', 'auto_expand' or 'auto_bind' if the vault is prepaid mode")
+			return errors.New("cannot update 'size', 'auto_expand' or 'auto_bind' if the vault is prepaid mode")
 		}
 		requestBody["auto_expand"] = d.Get("auto_expand").(bool)
 		requestBody["auto_bind"] = d.Get("auto_bind").(bool)
 		billing["size"] = d.Get("size").(int)
+	}
+
+	if d.HasChange("locked") {
+		requestBody["locked"] = d.Get("locked").(bool)
 	}
 
 	if d.HasChanges("bind_rules") {
@@ -920,7 +948,7 @@ func resourceVaultUpdate(ctx context.Context, d *schema.ResourceData, meta inter
 		return diag.Errorf("error creating CBR client: %s", err)
 	}
 
-	if d.HasChanges("name", "consistent_level", "size", "auto_expand", "auto_bind", "bind_rules") {
+	if d.HasChanges("name", "consistent_level", "size", "auto_expand", "auto_bind", "bind_rules", "locked") {
 		if err = updateBasicParameters(client, d); err != nil {
 			return diag.FromErr(err)
 		}

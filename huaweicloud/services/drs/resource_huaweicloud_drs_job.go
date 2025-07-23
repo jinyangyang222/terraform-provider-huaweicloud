@@ -24,6 +24,11 @@ import (
 	"github.com/huaweicloud/terraform-provider-huaweicloud/huaweicloud/utils"
 )
 
+var notFoundErrCode = []string{
+	"DRS.M00289", // non exist
+	"DRS.M05004", // deleted
+}
+
 // @API DRS POST /v3/{project_id}/jobs/batch-status
 // @API DRS POST /v3/{project_id}/jobs
 // @API DRS POST /v3/{project_id}/jobs/batch-connection
@@ -427,6 +432,12 @@ func ResourceDrsJob() *schema.Resource {
 					},
 				},
 			},
+			"is_open_fast_clean": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Computed: true,
+				ForceNew: true,
+			},
 			"order_id": {
 				Type:     schema.TypeString,
 				Computed: true,
@@ -472,6 +483,10 @@ func ResourceDrsJob() *schema.Resource {
 				Computed: true,
 			},
 			"security_group_id": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"original_job_direction": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
@@ -942,7 +957,8 @@ func resourceJobRead(_ context.Context, d *schema.ResourceData, meta interface{}
 
 	detailResp, err := jobs.Get(client, jobs.QueryJobReq{Jobs: []string{d.Id()}})
 	if err != nil {
-		return common.CheckDeletedDiag(d, parseDrsJobErrorToError404(err), "error retrieving DRS job")
+		return common.CheckDeletedDiag(d, common.ConvertExpected400ErrInto404Err(err, "results[0].error_code", notFoundErrCode...),
+			"error retrieving DRS job")
 	}
 	if len(detailResp.Results) == 0 || detailResp.Results[0].Status == "DELETED" {
 		return common.CheckDeletedDiag(d, golangsdk.ErrDefault404{}, "error retrieving DRS job")
@@ -1005,6 +1021,8 @@ func resourceJobRead(_ context.Context, d *schema.ResourceData, meta interface{}
 		d.Set("security_group_id", detail.SecurityGroupId),
 		setDbInfoToState(d, detail.SourceEndpoint, "source_db"),
 		setDbInfoToState(d, detail.TargetEndpoint, "destination_db"),
+		d.Set("is_open_fast_clean", detail.IsOpenFastClean),
+		d.Set("original_job_direction", detail.OriginalJobDirection),
 	)
 
 	// set objects
@@ -1134,7 +1152,8 @@ func resourceJobUpdate(ctx context.Context, d *schema.ResourceData, meta interfa
 	if d.HasChanges("name", "description") {
 		detailResp, err := jobs.Get(client, jobs.QueryJobReq{Jobs: []string{d.Id()}})
 		if err != nil {
-			return common.CheckDeletedDiag(d, parseDrsJobErrorToError404(err), "error retrieving DRS job")
+			return common.CheckDeletedDiag(d, common.ConvertExpected400ErrInto404Err(err, "results[0].error_code", notFoundErrCode...),
+				"error retrieving DRS job")
 		}
 		if len(detailResp.Results) == 0 || detailResp.Results[0].Status == "DELETED" {
 			return common.CheckDeletedDiag(d, golangsdk.ErrDefault404{}, "error retrieving DRS job")
@@ -1424,11 +1443,11 @@ func resourceJobDelete(ctx context.Context, d *schema.ResourceData, meta interfa
 
 	detailResp, err := jobs.Get(client, jobs.QueryJobReq{Jobs: []string{d.Id()}})
 	if err != nil {
-		return common.CheckDeletedDiag(d, parseDrsJobErrorToError404(err), "error retrieving DRS job")
+		return common.CheckDeletedDiag(d, common.ConvertExpected400ErrInto404Err(err, "results[0].error_code", notFoundErrCode...),
+			"error retrieving DRS job")
 	}
-
 	if len(detailResp.Results) == 0 || detailResp.Results[0].Status == "DELETED" {
-		return diag.Errorf("error retrieving DRS job, results is empty")
+		return common.CheckDeletedDiag(d, golangsdk.ErrDefault404{}, "error retrieving DRS job")
 	}
 	orderId := detailResp.Results[0].PeriodOrder.OrderId
 
@@ -1616,6 +1635,7 @@ func buildCreateParamter(d *schema.ResourceData, projectId, enterpriseProjectID 
 		MasterAz:         d.Get("master_az").(string),
 		SlaveAz:          d.Get("slave_az").(string),
 		PublciIpList:     buildPublicIpListParam(d.Get("public_ip_list").([]interface{})),
+		IsOpenFastClean:  d.Get("is_open_fast_clean").(bool),
 	}
 
 	if chargingMode, ok := d.GetOk("charging_mode"); ok && chargingMode.(string) == "prePaid" {
@@ -1713,19 +1733,6 @@ func buildKafkaSecurityConfigParamter(kafkaSecurityConfig []interface{}) *jobs.K
 	}
 }
 
-func parseDrsJobErrorToError404(respErr error) error {
-	var apiError jobs.JobDetailResp
-
-	if errCode, ok := respErr.(golangsdk.ErrDefault400); ok {
-		pErr := json.Unmarshal(errCode.Body, &apiError)
-		if pErr == nil &&
-			(apiError.Results[0].ErrorCode == "DRS.M00289" || apiError.Results[0].ErrorCode == "DRS.M05004") {
-			return golangsdk.ErrDefault404(errCode)
-		}
-	}
-	return respErr
-}
-
 func setDbInfoToState(d *schema.ResourceData, endpoint jobs.Endpoint, fieldName string) error {
 	result := make([]interface{}, 1)
 	// IP sometimes will not same as input, if input 1, will return 2
@@ -1736,7 +1743,7 @@ func setDbInfoToState(d *schema.ResourceData, endpoint jobs.Endpoint, fieldName 
 		"password":              endpoint.DbPassword,
 		"user":                  endpoint.DbUser,
 		"instance_id":           endpoint.InstanceId,
-		"name":                  endpoint.InstanceName,
+		"name":                  endpoint.DbName,
 		"region":                endpoint.Region,
 		"vpc_id":                endpoint.VpcId,
 		"subnet_id":             endpoint.SubnetId,
@@ -1796,6 +1803,7 @@ func testConnections(client *golangsdk.ServiceClient, jobId string, opts jobs.Cr
 				VpcId:               opts.SourceEndpoint.VpcId,
 				SubnetId:            opts.SourceEndpoint.SubnetId,
 				DbType:              opts.SourceEndpoint.DbType,
+				DbName:              opts.SourceEndpoint.DbName,
 				Ip:                  opts.SourceEndpoint.Ip,
 				DbUser:              opts.SourceEndpoint.DbUser,
 				DbPassword:          opts.SourceEndpoint.DbPassword,
@@ -1817,6 +1825,7 @@ func testConnections(client *golangsdk.ServiceClient, jobId string, opts jobs.Cr
 				VpcId:               opts.TargetEndpoint.VpcId,
 				SubnetId:            opts.TargetEndpoint.SubnetId,
 				DbType:              opts.TargetEndpoint.DbType,
+				DbName:              opts.TargetEndpoint.DbName,
 				Ip:                  opts.TargetEndpoint.Ip,
 				DbUser:              opts.TargetEndpoint.DbUser,
 				DbPassword:          opts.TargetEndpoint.DbPassword,
@@ -1851,6 +1860,7 @@ func processIpAndPort(ip, port string) string {
 func testConnectionsForDualAZ(client *golangsdk.ServiceClient, jobId string, opts jobs.CreateJobReq) (valid bool) {
 	sourceEndpoint := []jobs.PropertyParam{
 		{
+			DbName:              opts.SourceEndpoint.DbName,
 			DbType:              opts.SourceEndpoint.DbType,
 			NetType:             opts.NetType,
 			EndPointType:        "so",
@@ -1871,6 +1881,7 @@ func testConnectionsForDualAZ(client *golangsdk.ServiceClient, jobId string, opt
 	}
 	targetEndpoint := []jobs.PropertyParam{
 		{
+			DbName:              opts.TargetEndpoint.DbName,
 			DbType:              opts.TargetEndpoint.DbType,
 			NetType:             opts.NetType,
 			EndPointType:        "ta",

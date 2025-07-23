@@ -95,7 +95,6 @@
               },
               "hostname": {
                 "type": "string",
-                "optional": true,
                 "computed": true
               },
               "id": {
@@ -366,8 +365,7 @@
                     "fixed_ip_v4": {
                       "type": "string",
                       "optional": true,
-                      "computed": true,
-                      "forcenew": true
+                      "computed": true
                     },
                     "fixed_ip_v6": {
                       "type": "string",
@@ -393,8 +391,7 @@
                     },
                     "uuid": {
                       "type": "string",
-                      "required": true,
-                      "forcenew": true
+                      "required": true
                     }
                   }
                 },

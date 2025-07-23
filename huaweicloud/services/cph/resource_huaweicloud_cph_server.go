@@ -27,7 +27,10 @@ import (
 
 // @API CPH PUT /v1/{project_id}/cloud-phone/servers/{server_id}
 // @API CPH GET /v1/{project_id}/cloud-phone/servers/{server_id}
+// @API CPH PUT /v1/{project_id}/cloud-phone/servers/open-access
 // @API CPH POST /v2/{project_id}/cloud-phone/servers
+// @API CPH POST /v1/{project_id}/{resource_type}/{resource_id}/tags/action
+// @API CPH GET /v1/{project_id}/{resource_type}/{resource_id}/tags
 // @API BSS POST /v2/orders/subscriptions/resources/unsubscribe
 func ResourceCphServer() *schema.Resource {
 	return &schema.Resource{
@@ -146,7 +149,6 @@ func ResourceCphServer() *schema.Resource {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
-				ForceNew:    true,
 				Description: `The key pair name, which is used for logging in to the cloud phone through ADB.`,
 			},
 			"enterprise_project_id": {
@@ -164,6 +166,23 @@ func ResourceCphServer() *schema.Resource {
 				ForceNew:    true,
 				Description: `The application port enabled by the cloud phone.`,
 			},
+			"phone_data_volume": {
+				Type:        schema.TypeList,
+				Elem:        cphPhoneDataVolumeSchema(),
+				Optional:    true,
+				Computed:    true,
+				MaxItems:    1,
+				Description: `The phone data volume.`,
+			},
+			"server_share_data_volume": {
+				Type:        schema.TypeList,
+				Elem:        cphShareDataVolumeSchema(),
+				Optional:    true,
+				Computed:    true,
+				MaxItems:    1,
+				Description: `The server share data volume.`,
+			},
+			"tags": common.TagsSchema(),
 			"order_id": {
 				Type:        schema.TypeString,
 				Computed:    true,
@@ -271,6 +290,71 @@ func cphServerAddressSchema() *schema.Resource {
 	return &sc
 }
 
+func cphPhoneDataVolumeSchema() *schema.Resource {
+	sc := schema.Resource{
+		Schema: map[string]*schema.Schema{
+			"volume_type": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: `Specifies the volume type.`,
+			},
+			"volume_size": {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				ForceNew:    true,
+				Description: `Specifies the volume size, the unit is GB.`,
+			},
+			"volume_name": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: `The volume name.`,
+			},
+			"volume_id": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: `The volume ID.`,
+			},
+			"created_at": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: `The creation time.`,
+			},
+			"updated_at": {
+				Type:        schema.TypeString,
+				Computed:    true,
+				Description: `The update time.`,
+			},
+		},
+	}
+	return &sc
+}
+
+func cphShareDataVolumeSchema() *schema.Resource {
+	sc := schema.Resource{
+		Schema: map[string]*schema.Schema{
+			"volume_type": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Description: `Specifies the share volume type.`,
+			},
+			"size": {
+				Type:        schema.TypeInt,
+				Optional:    true,
+				ForceNew:    true,
+				Description: `Specifies the share volume size, the unit is GB.`,
+			},
+			"version": {
+				Type:        schema.TypeInt,
+				Computed:    true,
+				Description: `The share volume type.`,
+			},
+		},
+	}
+	return &sc
+}
+
 func resourceCphServerCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	cfg := meta.(*config.Config)
 	region := cfg.GetRegion(d)
@@ -331,6 +415,12 @@ func resourceCphServerCreate(ctx context.Context, d *schema.ResourceData, meta i
 		return diag.Errorf("error waiting for the Create of CPH server (%s) to complete: %s", d.Id(), err)
 	}
 
+	if _, ok := d.GetOk("tags"); ok {
+		if err := updateTags(createCphServerClient, d, "cph-server", d.Id()); err != nil {
+			return diag.Errorf("error creating tags of CPH server %s: %s", d.Id(), err)
+		}
+	}
+
 	return resourceCphServerRead(ctx, d, meta)
 }
 
@@ -347,11 +437,13 @@ func buildCreateCphServerBodyParams(d *schema.ResourceData, cfg *config.Config) 
 				"subnet_id": utils.ValueIgnoreEmpty(d.Get("subnet_id")),
 			},
 		},
-		"public_ip":         buildCreateCphServerRequestBodyPublicIp(d),
-		"band_width":        buildCreateCphServerRequestBodyBandWidth(d.Get("bandwidth")),
-		"keypair_name":      utils.ValueIgnoreEmpty(d.Get("keypair_name")),
-		"availability_zone": utils.ValueIgnoreEmpty(d.Get("availability_zone")),
-		"ports":             buildCreateCphServerRequestBodyApplicationPort(d.Get("ports")),
+		"public_ip":                buildCreateCphServerRequestBodyPublicIp(d),
+		"band_width":               buildCreateCphServerRequestBodyBandWidth(d.Get("bandwidth")),
+		"keypair_name":             utils.ValueIgnoreEmpty(d.Get("keypair_name")),
+		"availability_zone":        utils.ValueIgnoreEmpty(d.Get("availability_zone")),
+		"ports":                    buildCreateCphServerRequestBodyApplicationPort(d.Get("ports")),
+		"phone_data_volume":        buildCreateCphServerRequestBodyPhoneDataVolume(d.Get("phone_data_volume")),
+		"server_share_data_volume": buildCreateCphServerRequestBodyShareDataVolume(d.Get("server_share_data_volume")),
 	}
 
 	extendParam := map[string]interface{}{
@@ -435,6 +527,40 @@ func buildCreateCphServerRequestBodyApplicationPort(rawParams interface{}) []map
 		}
 		return rst
 	}
+	return nil
+}
+
+func buildCreateCphServerRequestBodyPhoneDataVolume(rawParams interface{}) map[string]interface{} {
+	if rawArray, ok := rawParams.([]interface{}); ok {
+		if len(rawArray) == 0 {
+			return nil
+		}
+
+		raw := rawArray[0].(map[string]interface{})
+		params := map[string]interface{}{
+			"volume_type": utils.ValueIgnoreEmpty(raw["volume_type"]),
+			"size":        utils.ValueIgnoreEmpty(raw["volume_size"]),
+		}
+		return params
+	}
+
+	return nil
+}
+
+func buildCreateCphServerRequestBodyShareDataVolume(rawParams interface{}) map[string]interface{} {
+	if rawArray, ok := rawParams.([]interface{}); ok {
+		if len(rawArray) == 0 {
+			return nil
+		}
+
+		raw := rawArray[0].(map[string]interface{})
+		params := map[string]interface{}{
+			"volume_type": utils.ValueIgnoreEmpty(raw["volume_type"]),
+			"size":        utils.ValueIgnoreEmpty(raw["size"]),
+		}
+		return params
+	}
+
 	return nil
 }
 
@@ -558,9 +684,55 @@ func resourceCphServerRead(_ context.Context, d *schema.ResourceData, meta inter
 		d.Set("enterprise_project_id", utils.PathSearch("enterprise_project_id", getCphServerRespBody, nil)),
 		d.Set("status", utils.PathSearch("status", getCphServerRespBody, nil)),
 		d.Set("security_groups", utils.PathSearch("security_groups", getCphServerRespBody, nil)),
+		d.Set("phone_data_volume", flattenPhoneDataVolume(getCphServerRespBody)),
+		d.Set("server_share_data_volume", flattenShareDataVolume(getCphServerRespBody)),
+	)
+
+	tags, err := getServerTags(getCphServerClient, d.Id())
+	if err != nil {
+		return diag.FromErr(err)
+	}
+
+	mErr = multierror.Append(
+		mErr,
+		d.Set("tags", tags),
 	)
 
 	return diag.FromErr(mErr.ErrorOrNil())
+}
+
+func flattenPhoneDataVolume(resp interface{}) []interface{} {
+	if resp == nil {
+		return nil
+	}
+	curJson := utils.PathSearch("volumes", resp, make([]interface{}, 0))
+	curArray := curJson.([]interface{})
+	rst := make([]interface{}, 0, len(curArray))
+	for _, v := range curArray {
+		rst = append(rst, map[string]interface{}{
+			"volume_type": utils.PathSearch("volume_type", v, nil),
+			"volume_size": utils.PathSearch("volume_size", v, nil),
+			"volume_name": utils.PathSearch("volume_name", v, nil),
+			"volume_id":   utils.PathSearch("volume_id", v, nil),
+			"created_at":  utils.PathSearch("create_time", v, nil),
+			"updated_at":  utils.PathSearch("update_time", v, nil),
+		})
+	}
+	return rst
+}
+
+func flattenShareDataVolume(resp interface{}) []map[string]interface{} {
+	shareVolume := utils.PathSearch("share_volume_info", resp, nil)
+	if shareVolume == nil {
+		return nil
+	}
+	return []map[string]interface{}{
+		{
+			"volume_type": utils.PathSearch("volume_type", shareVolume, nil),
+			"size":        utils.PathSearch("size", shareVolume, nil),
+			"version":     utils.PathSearch("version", shareVolume, nil),
+		},
+	}
 }
 
 func flattenGetCphServerResponseBodyAddress(resp interface{}) []interface{} {
@@ -601,42 +773,32 @@ func resourceCphServerUpdate(ctx context.Context, d *schema.ResourceData, meta i
 	cfg := meta.(*config.Config)
 	region := cfg.GetRegion(d)
 
-	updateCphServerNameChanges := []string{
-		"name",
+	client, err := cfg.NewServiceClient("cph", region)
+	if err != nil {
+		return diag.Errorf("error creating CPH client: %s", err)
 	}
 
-	if d.HasChanges(updateCphServerNameChanges...) {
-		// updateCphServerName: update CPH server name
-		var (
-			updateCphServerNameHttpUrl = "v1/{project_id}/cloud-phone/servers/{server_id}"
-			updateCphServerNameProduct = "cph"
-		)
-		updateCphServerNameClient, err := cfg.NewServiceClient(updateCphServerNameProduct, region)
+	if d.HasChange("name") {
+		err := updateServerName(client, d)
 		if err != nil {
-			return diag.Errorf("error creating CPH client: %s", err)
-		}
-
-		updateCphServerNamePath := updateCphServerNameClient.Endpoint + updateCphServerNameHttpUrl
-		updateCphServerNamePath = strings.ReplaceAll(updateCphServerNamePath, "{project_id}", updateCphServerNameClient.ProjectID)
-		updateCphServerNamePath = strings.ReplaceAll(updateCphServerNamePath, "{server_id}", d.Id())
-
-		updateCphServerNameOpt := golangsdk.RequestOpts{
-			KeepResponseBody: true,
-		}
-		updateCphServerNameOpt.JSONBody = utils.RemoveNil(buildUpdateCphServerNameBodyParams(d, cfg))
-		_, err = updateCphServerNameClient.Request("PUT", updateCphServerNamePath, &updateCphServerNameOpt)
-		if err != nil {
-			return diag.Errorf("error updating CPH server: %s", err)
+			return diag.FromErr(err)
 		}
 	}
+
+	if d.HasChange("keypair_name") {
+		err := updateKeypair(ctx, client, d)
+		if err != nil {
+			return diag.FromErr(err)
+		}
+	}
+
+	if d.HasChange("tags") {
+		if err := updateTags(client, d, "cph-server", d.Id()); err != nil {
+			return diag.Errorf("error updating tags of CPH server %s: %s", d.Id(), err)
+		}
+	}
+
 	return resourceCphServerRead(ctx, d, meta)
-}
-
-func buildUpdateCphServerNameBodyParams(d *schema.ResourceData, _ *config.Config) map[string]interface{} {
-	bodyParams := map[string]interface{}{
-		"server_name": utils.ValueIgnoreEmpty(d.Get("name")),
-	}
-	return bodyParams
 }
 
 func resourceCphServerDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
@@ -711,4 +873,159 @@ func deleteCphServerWaitingForStateCompleted(ctx context.Context, d *schema.Reso
 	}
 	_, err := stateConf.WaitForStateContext(ctx)
 	return err
+}
+
+func updateKeypair(ctx context.Context, client *golangsdk.ServiceClient, d *schema.ResourceData) error {
+	// updateKeypair: update CPH server keypair
+	updateKeypairHttpUrl := "v1/{project_id}/cloud-phone/servers/open-access"
+
+	updateKeypairPath := client.Endpoint + updateKeypairHttpUrl
+	updateKeypairPath = strings.ReplaceAll(updateKeypairPath, "{project_id}", client.ProjectID)
+
+	updateKeypairOpt := golangsdk.RequestOpts{
+		KeepResponseBody: true,
+	}
+	updateKeypairOpt.JSONBody = map[string]interface{}{
+		"servers": []map[string]interface{}{
+			{
+				"server_id":    d.Id(),
+				"keypair_name": d.Get("keypair_name").(string),
+			},
+		},
+	}
+	updateServerKeypairResp, err := client.Request("PUT", updateKeypairPath, &updateKeypairOpt)
+	if err != nil {
+		return fmt.Errorf("error updating CPH server keypair: %s", err)
+	}
+
+	updateServerKeypairRespBody, err := utils.FlattenResponse(updateServerKeypairResp)
+	if err != nil {
+		return fmt.Errorf("error flattening CPH server keypair: %s", err)
+	}
+
+	jobId := utils.PathSearch("jobs|[0].job_id", updateServerKeypairRespBody, "").(string)
+	if jobId == "" {
+		return fmt.Errorf("unable to find the job ID from the API response")
+	}
+
+	err = checkCphJobStatus(ctx, client, jobId, d.Timeout(schema.TimeoutDelete))
+	if err != nil {
+		return fmt.Errorf("error waiting for updating CPH server keypair to be completed: %s", err)
+	}
+
+	return nil
+}
+
+func updateServerName(client *golangsdk.ServiceClient, d *schema.ResourceData) error {
+	// updateCphServerName: update CPH server name
+	updateCphServerNameHttpUrl := "v1/{project_id}/cloud-phone/servers/{server_id}"
+
+	updateCphServerNamePath := client.Endpoint + updateCphServerNameHttpUrl
+	updateCphServerNamePath = strings.ReplaceAll(updateCphServerNamePath, "{project_id}", client.ProjectID)
+	updateCphServerNamePath = strings.ReplaceAll(updateCphServerNamePath, "{server_id}", d.Id())
+
+	updateCphServerNameOpt := golangsdk.RequestOpts{
+		KeepResponseBody: true,
+	}
+	updateCphServerNameOpt.JSONBody = utils.RemoveNil(map[string]interface{}{
+		"server_name": utils.ValueIgnoreEmpty(d.Get("name")),
+	})
+
+	_, err := client.Request("PUT", updateCphServerNamePath, &updateCphServerNameOpt)
+	if err != nil {
+		return fmt.Errorf("error updating CPH server: %s", err)
+	}
+
+	return nil
+}
+
+func checkCphJobStatus(ctx context.Context, client *golangsdk.ServiceClient, id string, timeout time.Duration) error {
+	stateConf := &resource.StateChangeConf{
+		Pending:      []string{"PENDING"},
+		Target:       []string{"COMPLETED"},
+		Refresh:      jobStatusRefreshFunc(client, id),
+		Timeout:      timeout,
+		PollInterval: 10 * timeout,
+		Delay:        10 * time.Second,
+	}
+	_, err := stateConf.WaitForStateContext(ctx)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func updateTags(client *golangsdk.ServiceClient, d *schema.ResourceData, tagsType string, id string) error {
+	oRaw, nRaw := d.GetChange("tags")
+	oMap := oRaw.(map[string]interface{})
+	nMap := nRaw.(map[string]interface{})
+
+	manageTagsHttpUrl := "v1/{project_id}/{resource_type}/{resource_id}/tags/action"
+	manageTagsPath := client.Endpoint + manageTagsHttpUrl
+	manageTagsPath = strings.ReplaceAll(manageTagsPath, "{project_id}", client.ProjectID)
+	manageTagsPath = strings.ReplaceAll(manageTagsPath, "{resource_type}", tagsType)
+	manageTagsPath = strings.ReplaceAll(manageTagsPath, "{resource_id}", id)
+	manageTagsOpt := golangsdk.RequestOpts{
+		KeepResponseBody: true,
+		OkCodes: []int{
+			204,
+		},
+	}
+
+	// remove old tags
+	if len(oMap) > 0 {
+		manageTagsOpt.JSONBody = map[string]interface{}{
+			"action": "delete",
+			"tags":   utils.ExpandResourceTags(oMap),
+		}
+		_, err := client.Request("POST", manageTagsPath, &manageTagsOpt)
+		if err != nil {
+			return err
+		}
+	}
+
+	// set new tags
+	if len(nMap) > 0 {
+		manageTagsOpt.JSONBody = map[string]interface{}{
+			"action": "create",
+			"tags":   utils.ExpandResourceTags(nMap),
+		}
+		_, err := client.Request("POST", manageTagsPath, &manageTagsOpt)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func getServerTags(client *golangsdk.ServiceClient, id string) (interface{}, error) {
+	getServerTagsHttpUrl := "v1/{project_id}/{resource_type}/{resource_id}/tags"
+	getServerTagsPath := client.Endpoint + getServerTagsHttpUrl
+	getServerTagsPath = strings.ReplaceAll(getServerTagsPath, "{project_id}", client.ProjectID)
+	getServerTagsPath = strings.ReplaceAll(getServerTagsPath, "{resource_type}", "cph-server")
+	getServerTagsPath = strings.ReplaceAll(getServerTagsPath, "{resource_id}", id)
+
+	getServerTagsOpt := golangsdk.RequestOpts{
+		KeepResponseBody: true,
+	}
+
+	getServerTagsResp, err := client.Request("GET", getServerTagsPath, &getServerTagsOpt)
+	if err != nil {
+		return nil, err
+	}
+
+	getServerTagsRespBody, err := utils.FlattenResponse(getServerTagsResp)
+	if err != nil {
+		return nil, err
+	}
+
+	tags := utils.PathSearch("tags", getServerTagsRespBody, make([]interface{}, 0)).([]interface{})
+	result := make(map[string]interface{})
+	for _, val := range tags {
+		valMap := val.(map[string]interface{})
+		result[valMap["key"].(string)] = valMap["value"]
+	}
+
+	return result, nil
 }

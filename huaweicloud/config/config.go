@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/go-uuid"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 
 	"github.com/chnsz/golangsdk"
@@ -61,6 +60,7 @@ type Config struct {
 	AssumeRoleAgency    string
 	AssumeRoleDomain    string
 	AssumeRoleDomainID  string
+	AssumeRoleDuration  int
 	Cloud               string
 	MaxRetries          int
 	TerraformVersion    string
@@ -105,6 +105,9 @@ type Config struct {
 	Metadata any
 
 	EnableForceNew bool
+
+	// SigningAlgorithm is used to select encryption algorithm
+	SigningAlgorithm string
 }
 
 func (c *Config) LoadAndValidate() error {
@@ -158,6 +161,11 @@ func (c *Config) LoadAndValidate() error {
 		} else {
 			log.Printf("[WARN] get user id failed: %s", err)
 		}
+	}
+
+	if c.SigningAlgorithm != "" {
+		c.HwClient.AKSKAuthOptions.SigningAlgorithm = c.SigningAlgorithm
+		c.DomainClient.AKSKAuthOptions.SigningAlgorithm = c.SigningAlgorithm
 	}
 
 	return nil
@@ -317,6 +325,30 @@ func buildObsUserAgent() string {
 	return agent
 }
 
+// When performing derivative calculations, the derivative service name must exist.
+// Currently only iotda service supports derivative algorithms.
+// When a new service requires derivative algorithm calculation, please maintain this configuration.
+var derivedAuthServiceNameMap = map[string]string{
+	"iotda": "iotdm",
+}
+
+// NewServiceClientWithDerivedAuth create a ServiceClient that performs derivative algorithm authentication.
+// Please confirm that the `derivedAuthServiceNameMap` configuration contains the derived service name of the service.
+func (c *Config) NewServiceClientWithDerivedAuth(srv, region string, isDerived bool) (*golangsdk.ServiceClient, error) {
+	client, err := c.NewServiceClient(srv, region)
+	if err != nil {
+		return nil, err
+	}
+
+	// Used to enable derivative calculations of AK/SK.
+	if isDerived {
+		client.AKSKAuthOptions.IsDerived = true
+		client.AKSKAuthOptions.DerivedAuthServiceName = derivedAuthServiceNameMap[srv]
+	}
+
+	return client, nil
+}
+
 // NewServiceClient create a ServiceClient which was assembled from ServiceCatalog.
 // If you want to add new ServiceClient, please make sure the catalog was already in allServiceCatalog.
 // the endpoint likes https://{Name}.{Region}.myhuaweicloud.com/{Version}/{project_id}/{ResourceBase}
@@ -419,8 +451,11 @@ func (c *Config) newServiceClientByEndpoint(client *golangsdk.ProviderClient, sr
 		return nil, fmt.Errorf("service type %s is invalid or not supportted", srv)
 	}
 
+	// Copy the client to prevent interference with the original data.
+	clone := new(golangsdk.ProviderClient)
+	*clone = *client
 	sc := &golangsdk.ServiceClient{
-		ProviderClient: client,
+		ProviderClient: clone,
 		Endpoint:       endpoint,
 	}
 
@@ -704,23 +739,6 @@ func (c *Config) BmsV1Client(region string) (*golangsdk.ServiceClient, error) {
 	return c.NewServiceClient("bms", region)
 }
 
-func (c *Config) AosV1Client(region string) (*golangsdk.ServiceClient, error) {
-	client, err := c.NewServiceClient("aos", region)
-	if err != nil {
-		return nil, err
-	}
-	u, err := uuid.GenerateUUID()
-	if err != nil {
-		return nil, err
-	}
-	client.MoreHeaders = map[string]string{
-		"Content-Type":      "application/json",
-		"X-Language":        "en-us",
-		"Client-Request-Id": u,
-	}
-	return client, nil
-}
-
 // ********** client for Storage **********
 func (c *Config) BlockStorageV1Client(region string) (*golangsdk.ServiceClient, error) {
 	return c.NewServiceClient("evsv1", region)
@@ -935,6 +953,10 @@ func (c *Config) CssV1Client(region string) (*golangsdk.ServiceClient, error) {
 	return c.NewServiceClient("css", region)
 }
 
+func (c *Config) CssV2Client(region string) (*golangsdk.ServiceClient, error) {
+	return c.NewServiceClient("cssv2", region)
+}
+
 func (c *Config) CloudStreamV1Client(region string) (*golangsdk.ServiceClient, error) {
 	return c.NewServiceClient("cs", region)
 }
@@ -1074,6 +1096,9 @@ func (c *Config) MaasV1Client(region string) (*golangsdk.ServiceClient, error) {
 }
 
 func (c *Config) SmsV3Client(region string) (*golangsdk.ServiceClient, error) {
+	if c.GetWebsiteType() == InternationalSite {
+		return c.NewServiceClient("sms-intl", region)
+	}
 	return c.NewServiceClient("sms", region)
 }
 
@@ -1100,4 +1125,8 @@ func (c *Config) KooGalleryV1Client(region string) (*golangsdk.ServiceClient, er
 
 func (c *Config) VpnV5Client(region string) (*golangsdk.ServiceClient, error) {
 	return c.NewServiceClient("vpn", region)
+}
+
+func (c *Config) StsClient(region string) (*golangsdk.ServiceClient, error) {
+	return c.NewServiceClient("sts", region)
 }

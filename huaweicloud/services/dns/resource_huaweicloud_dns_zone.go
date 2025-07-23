@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/go-multierror"
@@ -59,11 +60,16 @@ func ResourceDNSZone() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
+				DiffSuppressFunc: func(_, oldVal, newVal string, _ *schema.ResourceData) bool {
+					return strings.TrimSuffix(oldVal, ".") == strings.TrimSuffix(newVal, ".")
+				},
+				Description: `The name of the zone.`,
 			},
 			"email": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Computed:    true,
+				Description: `The email address of the administrator managing the zone.`,
 			},
 			"zone_type": {
 				Type:         schema.TypeString,
@@ -71,15 +77,18 @@ func ResourceDNSZone() *schema.Resource {
 				ForceNew:     true,
 				Default:      "public",
 				ValidateFunc: validation.StringInSlice([]string{"public", "private"}, false),
+				Description:  `The type of zone.`,
 			},
 			"ttl": {
-				Type:     schema.TypeInt,
-				Optional: true,
-				Default:  300,
+				Type:        schema.TypeInt,
+				Optional:    true,
+				Default:     300,
+				Description: `The time to live (TTL) of the zone.`,
 			},
 			"description": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				Description: `The description of the zone.`,
 			},
 			"router": {
 				Type:     schema.TypeSet,
@@ -87,34 +96,47 @@ func ResourceDNSZone() *schema.Resource {
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"router_id": {
-							Type:     schema.TypeString,
-							Required: true,
+							Type:        schema.TypeString,
+							Required:    true,
+							Description: `The ID of the associated VPC.`,
 						},
 						"router_region": {
-							Type:     schema.TypeString,
-							Optional: true,
+							Type:        schema.TypeString,
+							Optional:    true,
+							Computed:    true,
+							Description: `The region of the VPC.`,
 						},
 					},
+					Description: `The list of the router of the zone.`,
 				},
 			},
 			"enterprise_project_id": {
-				Type:     schema.TypeString,
-				Optional: true,
-				ForceNew: true,
-				Computed: true,
+				Type:        schema.TypeString,
+				Optional:    true,
+				ForceNew:    true,
+				Computed:    true,
+				Description: `The enterprise project ID of the zone.`,
 			},
 			"status": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
-				Description: `Specifies the status of the public zone.`,
+				Description: `The status of the zone.`,
 			},
+			"proxy_pattern": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				Computed:    true,
+				ForceNew:    true,
+				Description: `The recursive resolution proxy mode for subdomains of the private zone.`,
+			},
+			"tags": common.TagsSchema(`The key/value pairs to associate with the zone.`),
 			"masters": {
-				Type:     schema.TypeSet,
-				Computed: true,
-				Elem:     &schema.Schema{Type: schema.TypeString},
+				Type:        schema.TypeSet,
+				Computed:    true,
+				Elem:        &schema.Schema{Type: schema.TypeString},
+				Description: `The list of the masters of the DNS server.`,
 			},
-			"tags": common.TagsSchema(),
 		},
 	}
 }
@@ -171,6 +193,7 @@ func resourceDNSZoneCreate(ctx context.Context, d *schema.ResourceData, meta int
 		ZoneType:            zoneType,
 		EnterpriseProjectID: cfg.GetEnterpriseProjectID(d),
 		Router:              resourceDNSRouter(d, region),
+		ProxyPattern:        d.Get("proxy_pattern").(string),
 	}
 
 	log.Printf("[DEBUG] Create options: %#v", createOpts)
@@ -237,11 +260,7 @@ func resourceDNSZoneCreate(ctx context.Context, d *schema.ResourceData, meta int
 	// After zone is created, the status is ACTIVE (ENABLE).
 	// This action cannot be called repeatedly.
 	if v, ok := d.GetOk("status"); ok && v != "ENABLE" {
-		if zoneType == "private" {
-			return diag.Errorf("The private zone do not support updating status.")
-		}
-
-		if err := updatePublicZoneStatus(ctx, d, dnsClient, d.Timeout(schema.TimeoutCreate)); err != nil {
+		if err := updateZoneStatus(ctx, d, dnsClient, d.Timeout(schema.TimeoutCreate)); err != nil {
 			return diag.FromErr(err)
 		}
 	}
@@ -300,12 +319,14 @@ func resourceDNSZoneRead(_ context.Context, d *schema.ResourceData, meta interfa
 		d.Set("email", zoneInfo.Email),
 		d.Set("description", zoneInfo.Description),
 		d.Set("ttl", zoneInfo.TTL),
-		d.Set("masters", zoneInfo.Masters),
 		d.Set("region", region),
 		d.Set("zone_type", zoneInfo.ZoneType),
+		d.Set("router", flattenPrivateZoneRouters(zoneInfo.Routers)),
 		d.Set("enterprise_project_id", zoneInfo.EnterpriseProjectID),
-		// The private zone also returns the "status" attribute.
 		d.Set("status", parseZoneStatus(zoneInfo.Status)),
+		d.Set("proxy_pattern", zoneInfo.ProxyPattern),
+		// Attributes
+		d.Set("masters", zoneInfo.Masters),
 	)
 
 	// save tags
@@ -324,6 +345,21 @@ func resourceDNSZoneRead(_ context.Context, d *schema.ResourceData, meta interfa
 	}
 
 	return nil
+}
+
+func flattenPrivateZoneRouters(routers []zones.RouterResult) []map[string]interface{} {
+	if len(routers) == 0 {
+		return nil
+	}
+
+	result := make([]map[string]interface{}, len(routers))
+	for i, router := range routers {
+		result[i] = map[string]interface{}{
+			"router_id":     router.RouterID,
+			"router_region": router.RouterRegion,
+		}
+	}
+	return result
 }
 
 func parseZoneStatus(status string) string {
@@ -364,18 +400,15 @@ func resourceDNSZoneUpdate(ctx context.Context, d *schema.ResourceData, meta int
 		}
 	}
 
-	if d.HasChange("router") && zoneType == "private" {
-		if err := updateDNSZoneRouters(ctx, d, dnsClient, region); err != nil {
+	if d.HasChange("status") {
+		if err := updateZoneStatus(ctx, d, dnsClient, d.Timeout(schema.TimeoutUpdate)); err != nil {
 			return diag.FromErr(err)
 		}
 	}
 
-	if d.HasChange("status") {
-		if zoneType == "private" {
-			return diag.Errorf("The private zone do not support updating status.")
-		}
-
-		if err := updatePublicZoneStatus(ctx, d, dnsClient, d.Timeout(schema.TimeoutUpdate)); err != nil {
+	// This operation is supported only when the zone status is enabled.
+	if d.HasChange("router") && zoneType == "private" {
+		if err := updateDNSZoneRouters(ctx, d, dnsClient, region); err != nil {
 			return diag.FromErr(err)
 		}
 	}
@@ -492,14 +525,14 @@ func updateDNSZoneRouters(ctx context.Context, d *schema.ResourceData, client *g
 	return nil
 }
 
-func updatePublicZoneStatus(ctx context.Context, d *schema.ResourceData, client *golangsdk.ServiceClient, timeout time.Duration) error {
+func updateZoneStatus(ctx context.Context, d *schema.ResourceData, client *golangsdk.ServiceClient, timeout time.Duration) error {
 	opts := zones.UpdateStatusOpts{
 		ZoneId: d.Id(),
 		Status: d.Get("status").(string),
 	}
 	err := zones.UpdateZoneStatus(client, opts)
 	if err != nil {
-		return fmt.Errorf("error updating public zone status: %s", err)
+		return fmt.Errorf("error updating the status of the zone: %s", err)
 	}
 
 	stateConf := &resource.StateChangeConf{
@@ -512,7 +545,7 @@ func updatePublicZoneStatus(ctx context.Context, d *schema.ResourceData, client 
 
 	_, err = stateConf.WaitForStateContext(ctx)
 	if err != nil {
-		return fmt.Errorf("error waiting for updating public zone status completed: %s", err)
+		return fmt.Errorf("error waiting for updating the zone status completed: %s", err)
 	}
 
 	return nil

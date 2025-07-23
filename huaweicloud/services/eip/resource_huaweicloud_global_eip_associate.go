@@ -199,7 +199,9 @@ func resourceGlobalEIPAssociateCreate(ctx context.Context, d *schema.ResourceDat
 	}
 	gcbID := utils.PathSearch("global_eip.global_connection_bandwidth_info.gcb_id", geip, "").(string)
 	if gcbID == "" {
-		return diag.Errorf("unable to find global connection bandwidth ID from the API response")
+		if v, ok := d.GetOk("gc_bandwidth"); ok && len(v.([]interface{})) > 0 {
+			return diag.Errorf("unable to find global connection bandwidth ID from the API response")
+		}
 	}
 
 	// if bandwidth charge_mode is not "bwd", call Update GCB
@@ -397,11 +399,8 @@ func resourceGlobalEIPAssociateRead(_ context.Context, d *schema.ResourceData, m
 		d.Set("associate_instance", flattenAssociateInstance(utils.PathSearch("associate_instance_info", geip, nil))),
 		d.Set("gc_bandwidth", gcbInfo),
 	)
-	if err := mErr.ErrorOrNil(); err != nil {
-		return diag.Errorf("error setting global EIP association fields: %s", err)
-	}
 
-	return nil
+	return diag.FromErr(mErr.ErrorOrNil())
 }
 
 func getGCBInfo(client *golangsdk.ServiceClient, domainID, gcbID string) (interface{}, error) {

@@ -41,7 +41,7 @@ resource "huaweicloud_drs_job" "test" {
     port        = var.source_db_port
     user        = var.source_db_user
     password    = var.source_db_password
-    ssl_link    = false
+    ssl_enabled = false
   }
 
   destination_db {
@@ -155,7 +155,7 @@ resource "huaweicloud_drs_job" "test" {
     port        = var.source_db_port
     user        = var.source_db_user
     password    = var.source_db_password
-    ssl_link    = false
+    ssl_enabled = false
     vpc_id      = var.source_db_vpc_id
     subnet_id   = var.source_db_subnet_id
   }
@@ -219,7 +219,7 @@ resource "huaweicloud_drs_job" "test" {
     port        = var.source_db_port
     user        = var.source_db_user
     password    = var.source_db_password
-    ssl_link    = false
+    ssl_enabled = false
   }
 
   destination_db {
@@ -458,14 +458,21 @@ The following arguments are supported:
   The [public_ip_list](#block--public_ip_list) structure is documented below.
 
 * `master_az` - (Optional, String, ForceNew) Specifies the AZ where the primary task is located.
+  Changing this parameter will create a new resource.
 
 * `slave_az` - (Optional, String, ForceNew) Specifies the AZ where the standby task is located.
+  Changing this parameter will create a new resource.
   
   -> It takes effect when both `master_az` and `slave_az` are specified. Only MySQL and gaussdbv5ha-to-kafka scenarios
   are supported.
 
 * `alarm_notify` - (Optional, List, ForceNew)  Specifies the information body for setting task exception notification.
+  Changing this parameter will create a new resource.
   The [alarm_notify](#block--alarm_notify) structure is documented below.
+
+* `is_open_fast_clean` - (Optional, Bool, ForceNew) Specifies whether to enable binlog clearing for RDS for MySQL or RDS
+  for MariaDB. Defaults to **false**.
+  Changing this parameter will create a new resource.
 
 <a name="block--db_info"></a>
 The `db_info` block supports:
@@ -756,6 +763,8 @@ In addition to all arguments above, the following attributes are exported:
 * `subnet_id` - The subnet ID to which the DRS instance belongs.
 
 * `security_group_id` - The security group ID to which the DRS instance belongs.
+
+* `original_job_direction` - The original job direction.
 
 * `source_db` - The source database configuration.
   The [db_info](#attrblock--db_info) structure of the `source_db` is documented below.

@@ -231,6 +231,9 @@ The following arguments are supported:
 * `alias` - (Optional, String) Specifies the display name of a cluster. The value of `alias` cannot be the same as the `name`
   and display names of other clusters.
 
+* `timezone` - (Optional, String, ForceNew) Specifies the time zone of a cluster. Changing this parameter will create a
+  new cluster resource.
+
 * `description` - (Optional, String) Specifies the cluster description.
 
 * `container_network_cidr` - (Optional, String) Specifies the container network segments.
@@ -286,7 +289,7 @@ The following arguments are supported:
 * `ipv6_enable` - (Optional, Bool, ForceNew) Specifies whether to enable IPv6 in the cluster.
   Changing this parameter will create a new cluster resource.
 
-* `support_istio` - (Optional, Bool, ForceNew) Specifies whether to support Istio in the cluster.
+* `enable_distribute_management` - (Optional, Bool, ForceNew) Specifies whether to enable support for remote clouds.
   Changing this parameter will create a new cluster resource.
 
 * `extend_params` - (Optional, List, ForceNew) Specifies the extended parameter.
@@ -296,6 +299,10 @@ The following arguments are supported:
 * `component_configurations` - (Optional, List) Specifies the kubernetes component configurations.
   For details, see [documentation](https://support.huaweicloud.com/intl/en-us/usermanual-cce/cce_10_0213.html).
   The [object](#cce_cluster_component_configurations) structure is documented below.
+
+* `encryption_config` - (Optional, List, ForceNew) Specifies the encryption configuration.
+  The [object](#cce_cluster_encryption_config) structure is documented below.
+  Changing this parameter will create a new cluster resource.
 
 * `charging_mode` - (Optional, String, ForceNew) Specifies the charging mode of the CCE cluster.
   Valid values are **prePaid** and **postPaid**, defaults to **postPaid**.
@@ -400,6 +407,13 @@ The `component_configurations` block supports:
 
 * `configurations` - (Optional, String) Specifies JSON string of the component configurations.
 
+<a name="cce_cluster_encryption_config"></a>
+The `encryption_config` block supports:
+
+* `mode` - (Optional, String, ForceNew) Specifies the encryption mode. The value can be: **Default** and **KMS**.
+
+* `kms_key_id` - (Optional, String, ForceNew) Specifies KMS key ID, required if `mode` is set to **KMS**.
+
 ## Attribute Reference
 
 In addition to all arguments above, the following attributes are exported:
@@ -417,6 +431,8 @@ In addition to all arguments above, the following attributes are exported:
 * `eni_subnet_cidr` - The ENI network segment. This value is valid when only one eni_subnet_id is specified.
 
 * `kube_config_raw` - Raw Kubernetes config to be used by kubectl and other compatible tools.
+
+* `support_istio` - Whether Istio is supported in the cluster.
 
 The `certificate_clusters` block supports:
 

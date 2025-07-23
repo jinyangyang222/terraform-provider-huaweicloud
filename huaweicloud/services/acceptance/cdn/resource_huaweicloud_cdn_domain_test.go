@@ -258,8 +258,11 @@ func TestAccCdnDomain_configHttpSettings(t *testing.T) {
 
 	resource.ParallelTest(t, resource.TestCase{
 		PreCheck: func() {
+			// Note: The domain name, certificate and SCM ID configured in the environment variables need to match,
+			// otherwise the test case will fail.
 			acceptance.TestAccPreCheckCertCDN(t)
 			acceptance.TestAccPreCheckCERT(t)
+			acceptance.TestAccPreCheckCCMSSLCertificateId(t)
 		},
 		ProviderFactories: acceptance.TestAccProviderFactories,
 		CheckDestroy:      rc.CheckResourceDestroy(),
@@ -295,10 +298,12 @@ func TestAccCdnDomain_configHttpSettings(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					rc.CheckResourceExists(),
 					resource.TestCheckResourceAttr(resourceName, "name", acceptance.HW_CDN_CERT_DOMAIN_NAME),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.https_settings.0.certificate_source", "2"),
 					resource.TestCheckResourceAttr(resourceName, "configs.0.https_settings.0.certificate_name", "terraform-update"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.https_settings.0.scm_certificate_id",
+						acceptance.HW_CCM_SSL_CERTIFICATE_ID),
 					resource.TestCheckResourceAttr(resourceName, "configs.0.https_settings.0.https_enabled", "true"),
 					resource.TestCheckResourceAttr(resourceName, "configs.0.https_settings.0.http2_enabled", "true"),
-					resource.TestCheckResourceAttr(resourceName, "configs.0.https_settings.0.certificate_source", "0"),
 					resource.TestCheckResourceAttr(resourceName, "configs.0.https_settings.0.certificate_type", "server"),
 					resource.TestCheckResourceAttr(resourceName, "configs.0.https_settings.0.ocsp_stapling_status", "off"),
 					resource.TestCheckResourceAttr(resourceName, "configs.0.https_settings.0.https_status", "on"),
@@ -408,7 +413,7 @@ resource "huaweicloud_cdn_domain" "test" {
 
 var testAccCdnDomain_configHttpSettings_update1 = fmt.Sprintf(`
 resource "huaweicloud_cdn_domain" "test" {
-  name                  = "%s"
+  name                  = "%[1]s"
   type                  = "web"
   service_area          = "outside_mainland_china"
   enterprise_project_id = 0
@@ -425,13 +430,13 @@ resource "huaweicloud_cdn_domain" "test" {
     range_based_retrieval_enabled = "true"
 
     https_settings {
+      certificate_source   = 2
       certificate_name     = "terraform-update"
-      certificate_body     = file("%s")
+      scm_certificate_id   = "%[2]s"
+      certificate_type     = "server"
       http2_enabled        = true
       https_enabled        = true
-      private_key          = file("%s")
       tls_version          = "TLSv1.1,TLSv1.2,TLSv1.3"
-      certificate_source   = 0
       ocsp_stapling_status = "off"
     }
 
@@ -446,7 +451,7 @@ resource "huaweicloud_cdn_domain" "test" {
     }
   }
 }
-`, acceptance.HW_CDN_CERT_DOMAIN_NAME, acceptance.HW_CDN_CERT_PATH, acceptance.HW_CDN_PRIVATE_KEY_PATH)
+`, acceptance.HW_CDN_CERT_DOMAIN_NAME, acceptance.HW_CCM_SSL_CERTIFICATE_ID)
 
 var testAccCdnDomain_configHttpSettings_update2 = fmt.Sprintf(`
 resource "huaweicloud_cdn_domain" "test" {
@@ -557,6 +562,14 @@ func TestAccCdnDomain_configs(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "configs.0.error_code_redirect_rules.#", "2"),
 
 					resource.TestCheckResourceAttr(resourceName, "configs.0.access_area_filter.#", "2"),
+
+					resource.TestCheckResourceAttr(resourceName, "configs.0.sni.0.enabled", "true"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.sni.0.server_name", "back.allium.cn.com"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.sni.0.status", "on"),
+
+					resource.TestCheckResourceAttr(resourceName, "configs.0.request_url_rewrite.#", "3"),
+
+					resource.TestCheckResourceAttr(resourceName, "configs.0.browser_cache_rules.#", "3"),
 
 					resource.TestCheckResourceAttr(resourceName, "configs.0.user_agent_filter.0.type", "white"),
 					resource.TestCheckResourceAttr(resourceName, "configs.0.user_agent_filter.0.include_empty", "true"),
@@ -687,6 +700,27 @@ func TestAccCdnDomain_configs(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "configs.0.access_area_filter.0.exception_ip", "3.5.6.8,32.4.3.12,11.23.44.32"),
 					resource.TestCheckResourceAttr(resourceName, "configs.0.access_area_filter.0.type", "white"),
 
+					resource.TestCheckResourceAttr(resourceName, "configs.0.sni.0.enabled", "true"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.sni.0.server_name", "backupdate.allium.cn.com"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.sni.0.status", "on"),
+
+					resource.TestCheckResourceAttr(resourceName, "configs.0.request_url_rewrite.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.request_url_rewrite.0.execution_mode", "break"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.request_url_rewrite.0.redirect_host", ""),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.request_url_rewrite.0.redirect_status_code", "0"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.request_url_rewrite.0.redirect_url", "/test/index.html"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.request_url_rewrite.0.condition.0.match_type", "catalog"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.request_url_rewrite.0.condition.0.match_value", "/test/folder/1"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.request_url_rewrite.0.condition.0.priority", "10"),
+
+					resource.TestCheckResourceAttr(resourceName, "configs.0.browser_cache_rules.#", "1"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.browser_cache_rules.0.cache_type", "ttl"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.browser_cache_rules.0.ttl", "30"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.browser_cache_rules.0.ttl_unit", "m"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.browser_cache_rules.0.condition.0.match_type", "file_extension"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.browser_cache_rules.0.condition.0.match_value", ".jpg,.zip,.gz"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.browser_cache_rules.0.condition.0.priority", "2"),
+
 					resource.TestCheckResourceAttr(resourceName, "configs.0.remote_auth.0.enabled", "true"),
 					resource.TestCheckResourceAttr(resourceName,
 						"configs.0.remote_auth.0.remote_auth_rules.0.auth_failed_status", "503"),
@@ -740,6 +774,13 @@ func TestAccCdnDomain_configs(t *testing.T) {
 					resource.TestCheckResourceAttr(resourceName, "configs.0.error_code_redirect_rules.#", "0"),
 
 					resource.TestCheckResourceAttr(resourceName, "configs.0.access_area_filter.#", "0"),
+
+					resource.TestCheckResourceAttr(resourceName, "configs.0.sni.0.enabled", "false"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.sni.0.status", "off"),
+
+					resource.TestCheckResourceAttr(resourceName, "configs.0.request_url_rewrite.#", "0"),
+
+					resource.TestCheckResourceAttr(resourceName, "configs.0.browser_cache_rules.#", "0"),
 
 					resource.TestCheckResourceAttr(resourceName, "configs.0.remote_auth.0.enabled", "false"),
 					resource.TestCheckResourceAttr(resourceName, "configs.0.remote_auth.0.remote_auth_rules.#", "0"),
@@ -965,6 +1006,72 @@ resource "huaweicloud_cdn_domain" "test" {
       type         = "black"
     }
 
+    sni {
+      enabled     = true
+      server_name = "back.allium.cn.com"
+    }
+
+    request_url_rewrite {
+      execution_mode = "break"
+      redirect_url   = "/test/index.html"
+
+      condition {
+        match_type  = "catalog"
+        match_value = "/test/folder/1"
+        priority    = 10
+      }
+    }
+    request_url_rewrite {
+      execution_mode       = "redirect"
+      redirect_host        = "https://www.example.com"
+      redirect_status_code = 303
+      redirect_url         = "/test/index.jsp"
+
+      condition {
+        match_type  = "full_path"
+        match_value = "/test.jpg"
+        priority    = 5
+      }
+    }
+    request_url_rewrite {
+      execution_mode = "break"
+      redirect_url   = "/test/demo.html"
+
+      condition {
+        match_type = "home_page"
+        priority   = 6
+      }
+    }
+
+    browser_cache_rules {
+      cache_type = "follow_origin"
+
+      condition {
+        match_type  = "catalog"
+        match_value = "/test/folder/1"
+        priority    = 5
+      }
+    }
+    browser_cache_rules {
+      cache_type = "never"
+
+      condition {
+        match_type = "all"
+        priority   = 7
+      }
+    }
+    browser_cache_rules {
+      cache_type = "ttl"
+      ttl        = 30
+      ttl_unit   = "m"
+
+      condition {
+        match_type  = "file_extension"
+        match_value = ".jpg,.zip"
+        priority    = 2
+      }
+    }
+
     remote_auth {
       enabled = true
 
@@ -1151,6 +1258,34 @@ resource "huaweicloud_cdn_domain" "test" {
       type          = "white"
     }
 
+    sni {
+      enabled     = true
+      server_name = "backupdate.allium.cn.com"
+    }
+
+    request_url_rewrite {
+      execution_mode = "break"
+      redirect_url   = "/test/index.html"
+
+      condition {
+        match_type  = "catalog"
+        match_value = "/test/folder/1"
+        priority    = 10
+      }
+    }
+
+    browser_cache_rules {
+      cache_type = "ttl"
+      ttl        = 30
+      ttl_unit   = "m"
+
+      condition {
+        match_type  = "file_extension"
+        match_value = ".jpg,.zip,.gz"
+        priority    = 2
+      }
+    }
+
     remote_auth {
       enabled = true
 
@@ -1226,6 +1361,10 @@ resource "huaweicloud_cdn_domain" "test" {
 
     video_seek {
       enable_video_seek = false
+    }
+
+    sni {
+      enabled = false
     }
 
     ip_filter {
@@ -1529,6 +1668,140 @@ resource "huaweicloud_cdn_domain" "test" {
     active      = 1
     origin      = "100.254.53.75"
     origin_type = "ipaddr"
+  }
+}
+`, domainName)
+}
+
+func TestAccCdnDomain_client_cert(t *testing.T) {
+	var (
+		obj          interface{}
+		resourceName = "huaweicloud_cdn_domain.test"
+		domainName   = generateDomainName()
+	)
+
+	rc := acceptance.InitResourceCheck(
+		resourceName,
+		&obj,
+		getCdnDomainFunc,
+	)
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck: func() {
+			acceptance.TestAccPreCheck(t)
+			acceptance.TestAccPreCheckCCMCaCertificate(t)
+		},
+		ProviderFactories: acceptance.TestAccProviderFactories,
+		CheckDestroy:      rc.CheckResourceDestroy(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccCdnDomain_client_cert_basic(domainName),
+				Check: resource.ComposeTestCheckFunc(
+					rc.CheckResourceExists(),
+					resource.TestCheckResourceAttr(resourceName, "name", domainName),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.client_cert.0.enabled", "true"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.client_cert.0.hosts", "demo1.com.cn|demo2.com.cn|demo3.com.cn"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.client_cert.0.status", "on"),
+					resource.TestCheckResourceAttrSet(resourceName, "configs.0.client_cert.0.trusted_cert"),
+				),
+			},
+			{
+				Config: testAccCdnDomain_client_cert_update1(domainName),
+				Check: resource.ComposeTestCheckFunc(
+					rc.CheckResourceExists(),
+					resource.TestCheckResourceAttr(resourceName, "name", domainName),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.client_cert.0.enabled", "true"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.client_cert.0.hosts", "demo1.com.cn"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.client_cert.0.status", "on"),
+					resource.TestCheckResourceAttrSet(resourceName, "configs.0.client_cert.0.trusted_cert"),
+				),
+			},
+			{
+				Config: testAccCdnDomain_client_cert_update2(domainName),
+				Check: resource.ComposeTestCheckFunc(
+					rc.CheckResourceExists(),
+					resource.TestCheckResourceAttr(resourceName, "name", domainName),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.client_cert.0.enabled", "false"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.client_cert.0.hosts", ""),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.client_cert.0.status", "off"),
+					resource.TestCheckResourceAttr(resourceName, "configs.0.client_cert.0.trusted_cert", ""),
+				),
+			},
+			{
+				ResourceName:      resourceName,
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: testCDNDomainImportState(resourceName),
+			},
+		},
+	})
+}
+
+func testAccCdnDomain_client_cert_basic(domainName string) string {
+	return fmt.Sprintf(`
+resource "huaweicloud_cdn_domain" "test" {
+  name         = "%[1]s"
+  type         = "wholeSite"
+  service_area = "outside_mainland_china"
+
+  sources {
+    active      = 1
+    origin      = "100.254.53.75"
+    origin_type = "ipaddr"
+  }
+
+  configs {
+    client_cert {
+      enabled      = true
+      hosts        = "demo1.com.cn|demo2.com.cn|demo3.com.cn"
+      trusted_cert = file("%[2]s")
+    }
+  }
+}
+`, domainName, acceptance.HW_CCM_CA_CERTIFICATE_PATH)
+}
+
+func testAccCdnDomain_client_cert_update1(domainName string) string {
+	return fmt.Sprintf(`
+resource "huaweicloud_cdn_domain" "test" {
+  name         = "%[1]s"
+  type         = "wholeSite"
+  service_area = "outside_mainland_china"
+
+  sources {
+    active      = 1
+    origin      = "100.254.53.75"
+    origin_type = "ipaddr"
+  }
+
+  configs {
+    client_cert {
+      enabled      = true
+      hosts        = "demo1.com.cn"
+      trusted_cert = file("%[2]s")
+    }
+  }
+}
+`, domainName, acceptance.HW_CCM_CA_CERTIFICATE_PATH)
+}
+
+func testAccCdnDomain_client_cert_update2(domainName string) string {
+	return fmt.Sprintf(`
+resource "huaweicloud_cdn_domain" "test" {
+  name         = "%[1]s"
+  type         = "wholeSite"
+  service_area = "outside_mainland_china"
+
+  sources {
+    active      = 1
+    origin      = "100.254.53.75"
+    origin_type = "ipaddr"
+  }
+
+  configs {
+    client_cert {
+      enabled      = false
+    }
   }
 }
 `, domainName)

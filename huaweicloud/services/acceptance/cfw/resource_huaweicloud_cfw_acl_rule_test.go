@@ -51,6 +51,7 @@ func TestAccACLRule_basic(t *testing.T) {
 					resource.TestCheckResourceAttr(rName, "type", "0"),
 					resource.TestCheckResourceAttr(rName, "address_type", "0"),
 					resource.TestCheckResourceAttr(rName, "action_type", "0"),
+					resource.TestCheckResourceAttr(rName, "applications.#", "1"),
 					resource.TestCheckResourceAttr(rName, "long_connect_enable", "0"),
 					resource.TestCheckResourceAttr(rName, "status", "1"),
 					resource.TestCheckResourceAttr(rName, "direction", "0"),
@@ -68,6 +69,7 @@ func TestAccACLRule_basic(t *testing.T) {
 				Check: resource.ComposeTestCheckFunc(
 					rc.CheckResourceExists(),
 					resource.TestCheckResourceAttr(rName, "name", name),
+					resource.TestCheckResourceAttr(rName, "applications.#", "2"),
 					resource.TestCheckResourceAttr(rName, "source_addresses.#", "2"),
 					resource.TestCheckResourceAttr(rName, "destination_addresses.#", "2"),
 					resource.TestCheckResourceAttr(rName, "source_addresses.0", "1.1.1.2"),
@@ -363,6 +365,63 @@ func TestAccACLRule_addressGroups(t *testing.T) {
 	})
 }
 
+func TestAccACLRule_anyAddress_anyService(t *testing.T) {
+	var obj interface{}
+
+	name := acceptance.RandomAccResourceName()
+	rName := "huaweicloud_cfw_acl_rule.test"
+
+	rc := acceptance.InitResourceCheck(
+		rName,
+		&obj,
+		getACLRuleResourceFunc,
+	)
+
+	resource.ParallelTest(t, resource.TestCase{
+		PreCheck: func() {
+			acceptance.TestAccPreCheck(t)
+			acceptance.TestAccPreCheckCfw(t)
+		},
+		ProviderFactories: acceptance.TestAccProviderFactories,
+		CheckDestroy:      rc.CheckResourceDestroy(),
+		Steps: []resource.TestStep{
+			{
+				Config: testAccACLRule_anyAddress_anyService(name),
+				Check: resource.ComposeTestCheckFunc(
+					rc.CheckResourceExists(),
+					resource.TestCheckResourceAttr(rName, "name", name),
+					resource.TestCheckResourceAttr(rName, "description", "terraform test"),
+					resource.TestCheckResourceAttr(rName, "applications.#", "1"),
+					resource.TestCheckResourceAttr(rName, "applications.0", "HTTPS"),
+					resource.TestCheckResourceAttr(rName, "destination_addresses.0", "1.1.1.2"),
+					resource.TestCheckResourceAttr(rName, "custom_services.0.protocol", "6"),
+					resource.TestCheckResourceAttr(rName, "custom_services.0.source_port", "80"),
+					resource.TestCheckResourceAttr(rName, "custom_services.0.dest_port", "80"),
+				),
+			},
+			{
+				Config: testAccACLRule_anyAddress_anyService_update(name),
+				Check: resource.ComposeTestCheckFunc(
+					rc.CheckResourceExists(),
+					resource.TestCheckResourceAttr(rName, "name", name),
+					resource.TestCheckResourceAttr(rName, "applications.#", "1"),
+					resource.TestCheckResourceAttr(rName, "applications.0", "ANY"),
+					resource.TestCheckResourceAttr(rName, "source_addresses.0", "1.1.1.1"),
+				),
+			},
+			{
+				ResourceName:      rName,
+				ImportState:       true,
+				ImportStateVerify: true,
+				ImportStateIdFunc: testACLRuleImportState(rName),
+				ImportStateVerifyIgnore: []string{
+					"sequence", "type",
+				},
+			},
+		},
+	})
+}
+
 func testACLRuleImportState(name string) resource.ImportStateIdFunc {
 	return func(s *terraform.State) (string, error) {
 		rs, ok := s.RootModule().Resources[name]
@@ -392,6 +451,7 @@ resource "huaweicloud_cfw_acl_rule" "r1" {
   type                = 0
   address_type        = 0
   action_type         = 0
+  applications        = ["HTTPS"]
   long_connect_enable = 0
   status              = 1
 
@@ -458,6 +518,7 @@ resource "huaweicloud_cfw_acl_rule" "r1" {
   type                = 0
   address_type        = 0
   action_type         = 0
+  applications        = ["HTTPS", "HTTP"]
   long_connect_enable = 0
   status              = 1
 
@@ -909,6 +970,68 @@ resource "huaweicloud_cfw_acl_rule" "test" {
 }
 `, testAccDatasourceFirewalls_basic(), testAccACLRule_advanced_base(name), name,
 		acceptance.HW_CFW_PREDEFINED_ADDRESS_GROUP1, acceptance.HW_CFW_PREDEFINED_ADDRESS_GROUP2)
+}
+
+func testAccACLRule_anyAddress_anyService(name string) string {
+	return fmt.Sprintf(`
+%[1]s
+
+resource "huaweicloud_cfw_acl_rule" "test" {
+  name                = "%[2]s"
+  object_id           = data.huaweicloud_cfw_firewalls.test.records[0].protect_objects[0].object_id
+  description         = "terraform test"
+  type                = 0
+  address_type        = 0
+  action_type         = 0
+  applications        = ["HTTPS"]
+  long_connect_enable = 0
+  status              = 1
+  
+  destination_addresses = ["1.1.1.2"]
+
+  custom_services {
+    protocol    = 6
+    source_port = 80
+    dest_port   = 80
+  }
+  
+  sequence {
+    top = 1
+  }
+  
+  tags = {
+    key = "value"
+  }
+}
+`, testAccDatasourceFirewalls_basic(), name)
+}
+
+func testAccACLRule_anyAddress_anyService_update(name string) string {
+	return fmt.Sprintf(`
+%[1]s
+
+resource "huaweicloud_cfw_acl_rule" "test" {
+  name                = "%[2]s"
+  object_id           = data.huaweicloud_cfw_firewalls.test.records[0].protect_objects[0].object_id
+  description         = "terraform test"
+  type                = 0
+  address_type        = 0
+  action_type         = 0
+  applications        = ["ANY"]
+  long_connect_enable = 0
+  status              = 1
+  
+  source_addresses = ["1.1.1.1"]
+  
+  sequence {
+    top = 1
+  }
+  
+  tags = {
+    key = "value"
+  }
+}
+`, testAccDatasourceFirewalls_basic(), name)
 }
 
 func testAccACLRule_advanced_base(name string) string {

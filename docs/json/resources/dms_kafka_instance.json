@@ -138,22 +138,6 @@
                 "optional": true,
                 "computed": true
               },
-              "management_connect_address": {
-                "type": "string",
-                "computed": true
-              },
-              "manager_password": {
-                "type": "string",
-                "optional": true,
-                "forcenew": true,
-                "sensitive": true
-              },
-              "manager_user": {
-                "type": "string",
-                "optional": true,
-                "computed": true,
-                "forcenew": true
-              },
               "message_query_inst_enable": {
                 "type": "bool",
                 "computed": true
@@ -203,6 +187,35 @@
               },
               "port": {
                 "type": "number",
+                "computed": true
+              },
+              "port_protocols": {
+                "type": [
+                  "list",
+                  [
+                    "object",
+                    {
+                      "private_plain_address": "string",
+                      "private_plain_domain_name": "string",
+                      "private_plain_enable": "bool",
+                      "private_sasl_plaintext_address": "string",
+                      "private_sasl_plaintext_domain_name": "string",
+                      "private_sasl_plaintext_enable": "bool",
+                      "private_sasl_ssl_address": "string",
+                      "private_sasl_ssl_domain_name": "string",
+                      "private_sasl_ssl_enable": "bool",
+                      "public_plain_address": "string",
+                      "public_plain_domain_name": "string",
+                      "public_plain_enable": "bool",
+                      "public_sasl_plaintext_address": "string",
+                      "public_sasl_plaintext_domain_name": "string",
+                      "public_sasl_plaintext_enable": "bool",
+                      "public_sasl_ssl_address": "string",
+                      "public_sasl_ssl_domain_name": "string",
+                      "public_sasl_ssl_enable": "bool"
+                    }
+                  ]
+                ],
                 "computed": true
               },
               "product_id": {

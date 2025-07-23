@@ -2,7 +2,8 @@
 subcategory: "Cloud Trace Service (CTS)"
 layout: "huaweicloud"
 page_title: "HuaweiCloud: huaweicloud_cts_notification"
-description: ""
+description: |-
+  Manages CTS key event notification resource within HuaweiCloud.
 ---
 
 # huaweicloud_cts_notification
@@ -73,6 +74,8 @@ The following arguments are supported:
 
 * `smn_topic` - (Optional, String) Specifies the URN of a topic.
 
+* `agency_name` - (Optional, String) Specifies the cloud service agency name. The value can only be **cts_admin_trust**.
+
 * `operations` - (Optional, List) Specifies an array of operations that will trigger notifications.
   For details, see [Supported Services and Operations](https://support.huaweicloud.com/intl/en-us/usermanual-cts/cts_03_0022.html).
   The [operations](#CTS_Notification_Operations) structure is documented below.
@@ -131,6 +134,8 @@ In addition to all arguments above, the following attributes are exported:
 * `notification_id` - The notification ID in UUID format.
 
 * `status` - The notification status, the value can be **enabled** or **disabled**.
+
+* `created_at` - The creation time of the notification.
 
 ## Timeouts
 

@@ -224,8 +224,6 @@ The following arguments are supported:
 * `description` - (Optional, String) Specifies the description of the instance. The description consists of 0 to 85
   characters, and can't contain '<' or '>'.
 
-* `hostname` - (Optional, String) Specifies the hostname of the instance.
-
 * `admin_pass` - (Optional, String) Specifies the administrative password to assign to the instance.
 
 * `key_pair` - (Optional, String) Specifies the SSH keypair name used for logging in to the instance.
@@ -384,11 +382,9 @@ The following arguments are supported:
 
 The `network` block supports:
 
-* `uuid` - (Required, String, ForceNew) Specifies the network UUID to attach to the instance.
-  Changing this creates a new instance.
+* `uuid` - (Required, String) Specifies the network UUID to attach to the instance.
 
-* `fixed_ip_v4` - (Optional, String, ForceNew) Specifies a fixed IPv4 address to be used on this network.
-  Changing this creates a new instance.
+* `fixed_ip_v4` - (Optional, String) Specifies a fixed IPv4 address to be used on this network.
 
 * `ipv6_enable` - (Optional, Bool, ForceNew) Specifies whether the IPv6 function is enabled for the nic.
   Defaults to false. Changing this creates a new instance.
@@ -399,6 +395,8 @@ The `network` block supports:
 
 * `access_network` - (Optional, Bool) Specifies if this network should be used for provisioning access.
   Accepts true or false. Defaults to false.
+
+  ~> The `uuid` and `fixed_ip_v4` can be updated when there is only one network block.
 
 The `data_disks` block supports:
 
@@ -518,6 +516,7 @@ In addition to all arguments above, the following attributes are exported:
 * `public_ip` - The EIP address that is associated to the instance.
 * `access_ip_v4` - The first detected Fixed IPv4 address or the Floating IP.
 * `access_ip_v6` - The first detected Fixed IPv6 address.
+* `hostname` - The hostname of the instance.
 * `created_at` - The creation time, in UTC format.
 * `updated_at` - The last update time, in UTC format.
 * `expired_time` - The expired time of prePaid instance, in UTC format.
